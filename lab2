@@ -1,0 +1,97 @@
+lab1.c
+Details
+Activity
+TODAY
+E
+Evan McMillan uploaded an item
+3:48 PM
+C
+lab1.c
+No recorded activity before January 24, 2017
+
+New Team Drive
+
+/*########################################################################
+# MILESTONE : 1
+# PROGRAM : 1
+# PROJECT : MyFirstProject
+# GROUP : X
+# NAME 1 : Evan, McMillan, V00203520
+# NAME 2 : Rabbi, Quazi, V00778792
+# DESC : This program does…[write out a brief summary]
+# DATA
+# REVISED
+########################################################################
+*/
+
+#include <stdlib.h> // the header of the general purpose standard library of C programming language
+#include <avr/io.h>// the header of i/o port
+#include <util/delay_basic.h>
+//################## MAIN ROUTINE ##################
+
+
+void delaynus(int n);
+void delaynms(int n);
+
+int main(int argc, char *argv[]){
+DDRD = 0b11111111; /* Sets all pins on Port D to output */
+DDRC = 0xff; //setting the port C direction to output
+PORTD = 0b01100000; /* initialize port to high – turn on LEDs */
+PORTC = 0x01; // intialize port C
+
+while(1){
+	PORTC = 0b00000011; // change the leds accornding to the bits (far right 2 bits here)
+	delaynms(50);		// wait 100 milliseconds. Process goes to the next bits in the following lines of code.
+	PORTC = 0b00000111;
+	delaynms(50);
+	PORTC = 0b00001111;
+	delaynms(50);
+	PORTC = 0b00011110;
+	delaynms(50);
+	PORTC = 0b00111100;
+	delaynms(50);
+	PORTC = 0b01111000;
+	delaynms(50);
+	PORTC = 0b11110000;
+	delaynms(50);
+	PORTC = 0b11100000;
+	delaynms(50);
+	PORTC = 0b11000000;
+	delaynms(50);
+	PORTC = 0b11000000;
+	delaynms(50);
+	PORTC = 0b11100000;
+	delaynms(50);
+	PORTC = 0b11110000;
+	delaynms(50);
+	PORTC = 0b01111000;
+	delaynms(50);
+	PORTC = 0b00111100;
+	delaynms(50);
+	PORTC = 0b00011110;
+	delaynms(50);
+	PORTC = 0b00001111;
+	delaynms(50);
+	PORTC = 0b00000111;
+	delaynms(50);
+	PORTC = 0b00000011;
+	delaynms(50);
+
+
+	}
+return (0); //This line returns a 0 value to the calling program
+// generally means no error was returned
+}
+
+void delaynus(int n) //delay microsecond
+	{
+	int k;
+	for(k=0;k<n;k++)
+	_delay_loop_1(1);
+}
+void delaynms(int n) //delay millisecond
+	{
+	int k;
+	for(k=0;k<n;k++)
+ 	delaynus(1000);
+}
