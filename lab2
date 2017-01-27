@@ -1,11 +1,12 @@
 /*########################################################################
-# MILESTONE : 1
-# PROGRAM : 1
-# PROJECT : MyFirstProject
-# GROUP : X
+# MILESTONE : 2
+# PROGRAM : 2
+# PROJECT : TimerInterrupt 
+# GROUP : 5
 # NAME 1 : Evan, McMillan, V00203520
 # NAME 2 : Rabbi, Quazi, V00778792
-# DESC : This program does…[write out a brief summary]
+# DESC : Displays LED in Knight Rider Algorithm using fancy delay made
+	 from timer interrupt 
 # DATA
 # REVISED
 ########################################################################
@@ -31,7 +32,7 @@ PORTC = 0x03; // intialize port C
 while(1){
 	
 	PORTC = (1<<led);
-	timerCount(1000);//1000ms
+	timerCount(1000);//its just delaying 1000ms
 
 	}
 return (0); //This line returns a 0 value to the calling program
