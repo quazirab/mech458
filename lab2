@@ -19,8 +19,6 @@
 //################## MAIN ROUTINE ##################
 
 
-void delaynus(int n);
-void delaynms(int n);
 void timerCount (int tim);
 
 volatile unsigned char led = 0x03;
@@ -29,44 +27,41 @@ int main(int argc, char *argv[]){
 DDRD = 0b11111111; /* Sets all pins on Port D to output */
 DDRC = 0xff; //setting the port C direction to output
 PORTD = 0b01100000; /* initialize port to high – turn on LEDs */
-PORTC = 0x03; // intialize port C
+PORTC = led; // intialize port C
 
 while(1){
-	
-	led=(led<<1); //binary operator for shifting the led by 1 bit right;
-	PORTC = (led); //displaying led
-	timerCount(1000);//its just delaying 1000ms
-
+	for (int i=0;i<6;i++){
+		timerCount(100);//its just delaying 1000ms
+		led=(led<<1); //binary operator for shifting the led by 1 bit right;
+		PORTC = (led); //displaying led
+		
 	}
+	for (int i=0;i<6;i++){
+		timerCount(100);
+		led = (led>>1);
+		PORTC = (led);
+		
+	}
+}
 return (0); //This line returns a 0 value to the calling program
 // generally means no error was returned
 }
 
-void delaynus(int n) //delay microsecond
-	{
-	int k;
-	for(k=0;k<n;k++)
-	_delay_loop_1(1);
-}
-void delaynms(int n) //delay millisecond
-	{
-	int k;
-	for(k=0;k<n;k++)
- 	delaynus(1000);
-}
 
 void timerCount(int tim){
 	
 	int i = 0;
 	
-	//Set timer clear on Comparision CTC
-	TCCR1B = (1<<WGM12);
-	
 	//Set Presaler TO 1
 	TCCR1B = (1<<CS10);
 	
+	//Set timer clear on Comparision CTC
+	TCCR1B |= (1<<WGM12);
+	
+	
+	
 	//Comparison Register to 1000 cycles for 1 ms
-	0RC1A = 0x03e8;		
+	OCR1A = 0x03e8;		
 	
 	//Set inital Value of the timer Counter to 0x0000
 	TCNT1 = 0x0000;
@@ -82,9 +77,10 @@ void timerCount(int tim){
 	while(i<tim){
 		if((TIFR1 & 0x02)==0x02){  // sees if the 0CF1A flag is up 
 			
-			TIFR1 |=(1<<OCF1A);
+			TIFR1 =(1<<OCF1A);
 			i++;
 		}
 	}
 	return;
 }
+
