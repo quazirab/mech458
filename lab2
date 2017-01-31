@@ -22,7 +22,7 @@
 void delaynus(int n);
 void delaynms(int n);
 void timerCount (int tim);
-char hexchar(char h);
+
 volatile unsigned char led = 0x03;
 
 int main(int argc, char *argv[]){
@@ -33,7 +33,8 @@ PORTC = 0x03; // intialize port C
 
 while(1){
 	
-	PORTC = (led << 1);
+	led=(led<<1); //binary operator for shifting the led by 1 bit right;
+	PORTC = (led); //displaying led
 	timerCount(1000);//its just delaying 1000ms
 
 	}
@@ -54,28 +55,9 @@ void delaynms(int n) //delay millisecond
  	delaynus(1000);
 }
 
-void hexconvert(char *h, unsigned n){
-	
-	static const char hex_dig[] = '0123456789abcdef';
-
-	h[2] = hex_dig[(n >> 12) & 0xf];
-	h[3] = hex_dig[(n >> 8) & 0xf];
-	h[4] = hex_dig[(n >> 4) & 0xf];
-	h[5] = hex_dig[n & 0xf];
-	h[6] = '\0';
-
-}
-
-
 void timerCount(int tim){
 	
 	int i = 0;
-	char hexval[7];				//initialize the char array to contain the hex value for setting the comparison register.
-
-	hexval[0] = '0';
-	hexval[1] = 'x';
-
-	hexconvert(hexval, tim);	//use hexconvert function define above to convert integer value to a hexadecimal string
 	
 	//Set timer clear on Comparision CTC
 	TCCR1B = (1<<WGM12);
@@ -84,8 +66,7 @@ void timerCount(int tim){
 	TCCR1B = (1<<CS10);
 	
 	//Comparison Register to 1000 cycles for 1 ms
-	OCR1A = hexval[];			//Set the comparison register to the hex value yielded by the integer input (tim)
-	//0RC1A = 0x03e8;			//original line setting the register to 1000 cycles
+	0RC1A = 0x03e8;		
 	
 	//Set inital Value of the timer Counter to 0x0000
 	TCNT1 = 0x0000;
@@ -97,11 +78,11 @@ void timerCount(int tim){
 	TIFR1 = (1<<OCF1A);
 	
 	//Poll the timer to determine when the timer has reached 1ms
-	while(i<count){
+	//Timer is set for 1 ms, so it will be in while for tim X 1ms.
+	while(i<tim){
 		if((TIFR1 & 0x02)==0x02){  // sees if the 0CF1A flag is up 
 			
 			TIFR1 |=(1<<OCF1A);
-			
 			i++;
 		}
 	}
