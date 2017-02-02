@@ -20,87 +20,104 @@
 #include <stdlib.h>
 #include <avr/io.h>
 #include "LinkedQueue.h" 	/* This is the attached header file, which cleans things up */
-							/* Make sure you read it!!! */
+#include <util/delay_basic.h>
+#include<avr/interrupt.h>
+
+/* Make sure you read it!!! */
 /* global variables */
 /* Avoid using these */
 
 /* main routine */
+	volatile link *head;			/* The ptr to the head of the queue */
+	volatile link *tail;			/* The ptr to the tail of the queue */
+	volatile link *newLink;			/* A ptr to a link aggregate data type (struct) */
+	volatile link *rtnLink;			/* same as the above */
 int main(){	
 
-	link *head;			/* The ptr to the head of the queue */
-	link *tail;			/* The ptr to the tail of the queue */
-	link *newLink;		/* A ptr to a link aggregate data type (struct) */
-	link *rtnLink;		/* same as the above */
-	element eTest;		/* A variable to hold the aggregate data type known as element */
+	
+	//element eTest;		/* A variable to hold the aggregate data type known as element */
 
-	DDRB = 0xFF; 		/* Used for debugging purposes only */
+	DDRA = 0x00; //SET ALL OF THE PORT A TO INPUT BITS
+  	DDRB = 0xFF; //SET ALL OF THE PORT B TO OUTPUT BITS
 				
-
 	rtnLink = NULL;
 	newLink = NULL;
 
 	setup(&head, &tail);
 
-	/* 
-		Many of the following lines will test to see if your algorithms will work. You do not neccessarily
-		need the MCU attached to the computer to test this, and can do most of the work using the 
-		debugger in the AVR studio while observing the I/O View in the top right corner. Click the tab
-		or PORTB to see how the output chages while 'stepping' through the routines.
-	*/
-	/* Initialize a new link here */
-	initLink(&newLink);
-	newLink->e.itemCode = 3;
-	newLink->e.stage = 4;
-	enqueue(&head, &tail, &newLink);
-	PORTB = head->e.itemCode;
-	PORTB = tail->e.stage;
-
-	initLink(&newLink);
-	newLink->e.itemCode = 5;
-	newLink->e.stage = 6;
-	enqueue(&head, &tail, &newLink);
-	PORTB = head->e.itemCode;
-	PORTB = tail->e.stage;
-
-	initLink(&newLink);
-	newLink->e.itemCode = 7;
-	newLink->e.stage = 8;
-	enqueue(&head, &tail, &newLink);
-	PORTB = head->e.itemCode;
-	PORTB = tail->e.stage;
-
-	PORTB = 0x00;
-
-	/* Tests to see if firstValue works */
-	eTest = firstValue(&head);
-	PORTB = eTest.itemCode;
-	PORTB = 0x00;
-
-	/* Tests if Size works */
-	PORTB = size(&head, &tail);
-
-	/* Tests if dequeue works - Uncomment to use*/
-	//dequeue(&head, &rtnLink); /* remove the item at the head of the list */
-	//PORTB = rtnLink->e.itemCode;
-	//dequeue(&head, &rtnLink); /* remove the item at the head of the list */
-	//PORTB = rtnLink->e.itemCode;
-	//dequeue(&head, &rtnLink); /* remove the item at the head of the list */
-	//PORTB = rtnLink->e.itemCode;
+	while(1){
+  
+  	readInput = PINA; //ONLY THE INPUT BITS ARE READ
+		
+  	while ((PINA & 0x04) == 0x00){ //compares if port A2 is low
+    		debug();
+	}
 	
-	/* Tests is empty */
-	PORTB = isEmpty(&head);
-
-	/* Tests to see if clearQueue works*/
-	clearQueue(&head, &tail);
-	PORTB = size(&head, &tail);
-
-	PORTB = isEmpty(&head);
-
-
 	return(0);
 }/* main */
+		
+	
+void debug(){
 
+	initLink(&newLink); 
+	
+	//checks if the size of the list is 4 or not
+	if(size(&head, &tail)==4){
+  	dequeue(&head, &rtnLink);
+	display();
+  	}
+ 
+	else{
+  	newLink->e.itemCode = (PINA & 0x01); //saves PINA-0 to item code
+	newLink->e.stage = (PINA & 0x02); //saves PINA-1 to stage code
+	enqueue(&head, &tail, &newLink); //ins
+}
+	
+void display(){
+	int i=0;
+	if(i==0){
+		
+	} 
+}
 
+		
+void timerCount(int tim){
+	
+	int i = 0;
+	
+	//Set Presaler TO 1
+	TCCR1B = (1<<CS10);
+	
+	//Set timer clear on Comparision CTC
+	TCCR1B |= (1<<WGM12);
+	
+	
+	
+	//Comparison Register to 1000 cycles for 1 ms
+	OCR1A = 0x03e8;		
+	
+	//Set inital Value of the timer Counter to 0x0000
+	TCNT1 = 0x0000;
+	
+	//Enable the output compare interrut enable
+	TIMSK1 = TIMSK1|0x02;
+	
+	//Clear the timer interrupt flag and begin timer
+	TIFR1 = (1<<OCF1A);
+	
+	//Poll the timer to determine when the timer has reached 1ms
+	//Timer is set for 1 ms, so it will be in while for tim X 1ms.
+	while(i<tim){
+		if((TIFR1 & 0x02)==0x02){  // sees if the 0CF1A flag is up 
+			
+			TIFR1 =(1<<OCF1A);
+			i++;
+		}
+	}
+	return;
+}		
+		
+		
 /**************************************************************************************/
 /***************************** SUBROUTINES ********************************************/
 /**************************************************************************************/
