@@ -32,6 +32,16 @@
 	volatile link *tail;			/* The ptr to the tail of the queue */
 	volatile link *newLink;			/* A ptr to a link aggregate data type (struct) */
 	volatile link *rtnLink;			/* same as the above */
+	volatile int state = 0;			/*WHEN == 1, LED WILL START TOP DISPLAY */
+	volatile element e1 = null;		/* A variable to hold the aggregate data type known as element */
+	volatile element e2 = null;		/* A variable to hold the aggregate data type known as element */
+	volatile element e3 = null;		/* A variable to hold the aggregate data type known as element */
+
+	void debug();
+	void elemExt();
+	void dislay();
+
+		
 int main(){	
 
 	
@@ -47,11 +57,15 @@ int main(){
 
 	while(1){
   
-  	readInput = PINA; //ONLY THE INPUT BITS ARE READ
+  		readInput = PINA; //ONLY THE INPUT BITS ARE READ
 		
-  	while ((PINA & 0x04) == 0x00){ //compares if port A2 is low
-    		debug();
-	}
+  		while ((PINA & 0x04) == 0x00){ //compares if port A2 is low
+    			debug();
+	}//while
+	if (state==1){
+		display();
+		state=0;
+	}//if
 	
 	return(0);
 }/* main */
@@ -61,24 +75,38 @@ void debug(){
 
 	initLink(&newLink); 
 	
-	//checks if the size of the list is 4 or not
-	if(size(&head, &tail)==4){
-  	dequeue(&head, &rtnLink);
-	display();
-  	}
+	
+	if(size(&head, &tail)==4){	//checks if the size of the list is 4 or not
+  	dequeue(&head, &rtnLink);	//deques the head 
+	elemExt(); 			//Extracts the other 3 elements
+	state = 1;			//Makes State == 1 for displaying
+  	}//if
  
 	else{
-  	newLink->e.itemCode = (PINA & 0x01); //saves PINA-0 to item code
-	newLink->e.stage = (PINA & 0x02); //saves PINA-1 to stage code
-	enqueue(&head, &tail, &newLink); //ins
-}
+		for(int i=0;i<=4;i++){			//inserts the links by repeating the loop 4 times
+  		newLink->e.itemCode = (PINA & 0x01); 	//saves PINA-0 to item code
+		newLink->e.stage = (PINA & 0x02); 	//saves PINA-1 to stage code
+		enqueue(&head, &tail, &newLink); 	//inserts the first value to the tail
+		}//for
+	}//else
+}//debug
 	
-void display(){
-	int i=0;
-	if(i==0){
-		
-	} 
-}
+void elemExt(){
+		e1 = firstValue(&head);		//assigns the first value to the e1
+		dequeue(&head, &rtnLink);	//deques the first value
+		e3 = firstValue(&head);		
+		dequeue(&head, &rtnLink);
+		e3 = firstValue(&head);
+		dequeue(&head, &rtnLink);
+		state = 1;
+		return 0;
+}//element
+	
+void dislay(){
+	//display algorithm 
+}//display
+	
+
 
 		
 void timerCount(int tim){
