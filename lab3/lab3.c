@@ -78,6 +78,7 @@ void debug(){
 	
 	if(size(&head, &tail)==4){	//checks if the size of the list is 4 or not
   	dequeue(&head, &rtnLink);	//deques the head 
+	free(rtnLink);			//free
 	elemExt(); 			//Extracts the other 3 elements
 	state = 1;			//Makes State == 1 for displaying
   	}//if
@@ -85,15 +86,16 @@ void debug(){
 	else{
 		for(int i=0;i<=4;i++){			//inserts the links by repeating the loop 4 times
   		newLink->e.itemCode = (PINA & 0x01); 	//saves PINA-0 to item code
-		newLink->e.stage = (PINA & 0x02); 	//saves PINA-1 to stage code
+		//newLink->e.stage = (PINA & 0x02); 	//saves PINA-1 to stage code
 		enqueue(&head, &tail, &newLink); 	//inserts the first value to the tail
 		}//for
 	}//else
 }//debug
 	
 void elemExt(){
-		e1 = firstValue(&head);		//assigns the first value to the e1
+		//e1 = firstValue(&head);		//assigns the first value to the e1
 		dequeue(&head, &rtnLink);	//deques the first value
+		e1=rtnLink->e.itemCode;
 		e3 = firstValue(&head);		
 		dequeue(&head, &rtnLink);
 		e3 = firstValue(&head);
