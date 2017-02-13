@@ -32,7 +32,7 @@
 	volatile link *tail;			/* The ptr to the tail of the queue */
 	volatile link *newLink;			/* A ptr to a link aggregate data type (struct) */
 	volatile link *rtnLink;			/* same as the above */
-	volatile int state = 0;			/*WHEN == 1, LED WILL START TOP DISPLAY */
+	volatile int state = 1;			/*WHEN == 1, LED WILL START TOP DISPLAY */
 	volatile element e1 = null;		/* A variable to hold the aggregate data type known as element */
 	volatile element e2 = null;		/* A variable to hold the aggregate data type known as element */
 	volatile element e3 = null;		/* A variable to hold the aggregate data type known as element */
@@ -56,16 +56,14 @@ int main(){
 	setup(&head, &tail);
 
 	while(1){
-  
-  		readInput = PINA; //ONLY THE INPUT BITS ARE READ
-		
-  		while ((PINA & 0x04) == 0x00){ //compares if port A2 is low
-    			debug();
+  		while((PINA & 0x04) == 0x04);
+				timerCount(20);
+		while((PINA & 0x04) == 0x00);
+				timerCount(20);
+				debug();
+	
+	
 	}//while
-	if (state==1){
-		display();
-		state=0;
-	}//if
 	
 	return(0);
 }/* main */
@@ -75,37 +73,64 @@ void debug(){
 
 	initLink(&newLink); 
 	
-	
-	if(size(&head, &tail)==4){	//checks if the size of the list is 4 or not
-  	dequeue(&head, &rtnLink);	//deques the head 
-	free(rtnLink);			//free
-	elemExt(); 			//Extracts the other 3 elements
-	state = 1;			//Makes State == 1 for displaying
-  	}//if
- 
-	else{
-		for(int i=0;i<=4;i++){			//inserts the links by repeating the loop 4 times
-  		newLink->e.itemCode = (PINA & 0x01); 	//saves PINA-0 to item code
-		//newLink->e.stage = (PINA & 0x02); 	//saves PINA-1 to stage code
-		enqueue(&head, &tail, &newLink); 	//inserts the first value to the tail
-		}//for
-	}//else
+	readInput = (PINA & 0x03); //ONLY THE INPUT BITS ARE READ
+	switch (state){
+		case (1):				
+		//Input1 = readInput;
+		state++;
+		break;
+		
+		case (2):
+		newLink->e.itemCode = readInput;
+		enqueue(&head, &tail, &newLink); 
+		state++;
+		break;
+		
+		case (3):
+		newLink->e.itemCode = readInput;
+		enqueue(&head, &tail, &newLink); 
+		state++;
+		break;
+		
+		case (4):
+		newLink->e.itemCode = readInput;
+		enqueue(&head, &tail, &newLink); 
+		elemExt();		//extracts all the data
+		dislay();		//displays it
+		state++;
+		break;
+
+		case (5):
+		PORTC = 0;	
+		state =1;
+		break;
 }//debug
 	
 void elemExt(){
-		//e1 = firstValue(&head);		//assigns the first value to the e1
+						
 		dequeue(&head, &rtnLink);	//deques the first value
-		e1=rtnLink->e.itemCode;
-		e3 = firstValue(&head);		
-		dequeue(&head, &rtnLink);
-		e3 = firstValue(&head);
-		dequeue(&head, &rtnLink);
-		state = 1;
+		e1=rtnLink->e.itemCode;		//assigns the first value to the e1
+		free(rtnLink);			//free
+		e2=rtnLink->e.itemCode;
+		free(rtnLink);			//free
+		e3=rtnLink->e.itemCode;
+		free(rtnLink);			//free
 		return 0;
 }//element
 	
 void dislay(){
-	//display algorithm 
+	//display algorithm
+	PORTC = e1;
+	timerCount(2000);
+	PORTC |= (e2<<2);
+	timerCount(2000);
+	PORTC |= (e3<<4);
+	timerCount(2000);
+
+
+	e1=NULL;
+	e2=NULL;
+	e3=NULL;
 }//display
 	
 
