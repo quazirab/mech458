@@ -19,6 +19,7 @@
 /* include libraries */
 #include <stdlib.h>
 #include <avr/io.h>
+#include "LinkedQueue.h" 	/* This is the attached header file, which cleans things up */
 #include <util/delay_basic.h>
 #include<avr/interrupt.h>
 
@@ -26,99 +27,64 @@
 /* global variables */
 /* Avoid using these */
 
-	void debug();
-	void elemExt();
-	void display_led();
-
-	volatile char readInput;
-	volatile char Input1;
-	volatile char Input2;
-	volatile char Input3;
-	volatile char Input4;
-	volatile int state=1;
+/* main routine */
+	void timerCount();
 
 		
 int main(){	
 
-	
-	//element eTest;		/* A variable to hold the aggregate data type known as element */
+	link *newLink;			//Link pointer for the new node to be added on each input
+	link *head;				//Link pointer for the head of the queue
+	link *tail;				//Link pointer for the tail of the queue
+	link *rtnLink;			//Link pointer for returning the value of the node that has been dequeued
+	int shiftCount = 0;		//Integer counter for shifting the bit display on the LED bank
+	char disp;				//char variable to temporarily store the value in e.itemCode before displaying it
 
-	DDRA = 0x00; //SET ALL OF THE PORT A TO INPUT BITS
-  	DDRC = 0xFF; //SET ALL OF THE PORT B TO OUTPUT BITS
+	DDRA = 0x00;			//SET ALL OF THE PORT A TO INPUT BITS
+  	DDRC = 0xFF;			//SET ALL OF THE PORT B TO OUTPUT BITS
 
 	while(1){
-  
-  		 
+		PORTC = 0;				//Set PORTC to all 0
+		shiftCount = 0;			//Re-set the bit-shift counter to 
 		
-  		while((PINA & 0x04) == 0x04);
-				timerCount(20);
-		while((PINA & 0x04) == 0x00);
-				timerCount(20);
-				debug();			
-	
+		setup(&head, &tail);	//Initialise the linked queue
+		
+		for(int i = 0; i<=3; i++){			//Loop through for 4 presses of the button
 			
+			 
+			while((PINA & 0x04) == 0x04);	//Wait for the button to be pressed
+			timerCount(20);					//Debounce by waiting for 20ms
+			while((PINA & 0x04) == 0x00);	//Wait for the button to be released
+			timerCount(20);
+			
+			initLink(&newLink);
+			
+			newLink->e.itemCode =  (PINA & 0x03); //ONLY THE INPUT BITS ARE READ
+			enqueue(&head, &tail, &newLink);
+			
+		}//for - Input Loop
+		dequeue(&head, &rtnLink);
+		free(rtnLink);
 		
-	}//while
+		for(int j = 0; j<3; j++){
+			dequeue(&head, &rtnLink);				//Extract the head of the list and set it to 'rtnLink'
+
+			disp = rtnLink->e.itemCode;			//Set the value of the head of the lists 'itemCode' variable to the 'disp' element
+			PORTC |= (disp << shiftCount);		//Set PORTC to display the value in 'disp' according to how many bits are being shifted, while keeping any previously displayed results
+			timerCount(2000);
+			shiftCount += 2;					//Increment shiftCount by 2, causing the display line above to shift the output by 2 bits to the left on the next loop.
+			free(rtnLink);							//Free the memory occupied by 'rtnLink'
+
+		}//for - Display loop
+		
+		while((PINA & 0x04) == 0x04);
+		timerCount(20);
+		while((PINA & 0x04) == 0x00);
+		timerCount(20);
 	
-	return(0);
+	}//while - Main loop
+return(0);
 }/* main */
-		
-	
-void debug(){
-	readInput = (PINA & 0x03); //ONLY THE INPUT BITS ARE READ
-	switch (state){
-		case (1):				
-		//Input1 = readInput;
-		state++;
-		break;
-		
-		case (2):
-		Input2 = readInput;
-		state++;
-		break;
-		
-		case (3):
-		Input3 = readInput;
-		state++;
-		break;
-		
-		case (4):
-		Input4 = readInput;
-		display_led();
-		state++;
-		break;
-
-		case (5):
-		PORTC = 0;
-		state =1;
-		break;
-		
-	}//switch
-		
-		
-}//debug
-	
-	
-void display_led(){
-
-	PORTC = Input2;
-	timerCount(2000);
-	PORTC |= (Input3<<2);
-	timerCount(2000);
-	PORTC |= (Input4<<4);
-	timerCount(2000);
-
-	
-//	Input1=NULL;
-	Input2=NULL;
-	Input3=NULL;
-	Input4=NULL;
-
-	
-}//display
-	
-
-
 		
 void timerCount(int tim){
 	
@@ -152,7 +118,168 @@ void timerCount(int tim){
 			TIFR1 =(1<<OCF1A);
 			i++;
 		}//if
-	}//whil
+	}//while
 	return;
-}//timer count		
+}		
 		
+		
+/**************************************************************************************/
+/***************************** SUBROUTINES ********************************************/
+/**************************************************************************************/
+
+
+
+
+
+
+
+/**************************************************************************************
+* DESC: initializes the linked queue to 'NULL' status
+* INPUT: the head and tail pointers by reference
+*/
+
+void setup(link **h,link **t){
+	*h = NULL;		/* Point the head to NOTHING (NULL) */
+	*t = NULL;		/* Point the tail to NOTHING (NULL) */
+	return;
+}/*setup*/
+
+
+
+
+/**************************************************************************************
+* DESC: This initializes a link and returns the pointer to the new link or NULL if error 
+* INPUT: the head and tail pointers by reference
+*/
+void initLink(link **newLink){
+	//link *l;
+	*newLink = malloc(sizeof(link));
+	(*newLink)->next = NULL;
+	return;
+}/*initLink*/
+
+
+
+
+/****************************************************************************************
+*  DESC: Accepts as input a new link by reference, and assigns the head and tail		
+*  of the queue accordingly				
+*  INPUT: the head and tail pointers, and a pointer to the new link that was created 
+*/
+/* will put an item at the tail of the queue */
+void enqueue(link **h, link **t, link **nL){
+
+	if (*t != NULL){
+		/* Not an empty queue */
+		(*t)->next = *nL;
+		*t = *nL; //(*t)->next;
+	}/*if*/
+	else{
+		/* It's an empty Queue */
+		//(*h)->next = *nL;
+		//should be this
+		*h = *nL;
+		*t = *nL;
+	}/* else */
+	return;
+}/*enqueue*/
+
+
+
+
+/**************************************************************************************
+* DESC : Removes the link from the head of the list and assigns it to deQueuedLink
+* INPUT: The head and tail pointers, and a ptr 'deQueuedLink' 
+* 		 which the removed link will be assigned to
+*/
+/* This will remove the link and element within the link from the head of the queue */
+void dequeue(link **h, link **deQueuedLink){
+	/* ENTER YOUR CODE HERE */
+	*deQueuedLink = *h;	// Will set to NULL if Head points to NULL
+	/* Ensure it is not an empty queue */
+	if (*h != NULL){
+		*h = (*h)->next;	//Set *h to be the next node in the linked list
+	}/*if*/
+	
+	return;
+}/*dequeue*/
+
+
+
+
+/**************************************************************************************
+* DESC: Peeks at the first element in the list
+* INPUT: The head pointer
+* RETURNS: The element contained within the queue
+*/
+/* This simply allows you to peek at the head element of the queue and returns a NULL pointer if empty */
+element firstValue(link **h){
+	return((*h)->e);
+}/*firstValue*/
+
+
+
+
+
+/**************************************************************************************
+* DESC: deallocates (frees) all the memory consumed by the Queue
+* INPUT: the pointers to the head and the tail
+*/
+/* This clears the queue */
+void clearQueue(link **h, link **t){
+
+	link *temp;
+
+	while (*h != NULL){
+		temp = *h;
+		*h=(*h)->next;
+		free(temp);
+	}/*while*/
+	
+	/* Last but not least set the tail to NULL */
+	*t = NULL;		
+
+	return;
+}/*clearQueue*/
+
+
+
+
+
+/**************************************************************************************
+* DESC: Checks to see whether the queue is empty or not
+* INPUT: The head pointer
+* RETURNS: 1:if the queue is empty, and 0:if the queue is NOT empty
+*/
+/* Check to see if the queue is empty */
+char isEmpty(link **h){
+	/* ENTER YOUR CODE HERE */
+	return(*h == NULL);
+}/*isEmpty*/
+
+
+
+
+
+/**************************************************************************************
+* DESC: Obtains the number of links in the queue
+* INPUT: The head and tail pointer
+* RETURNS: An integer with the number of links in the queue
+*/
+/* returns the size of the queue*/
+int size(link **h, link **t){
+
+	link 	*temp;			/* will store the link while traversing the queue */
+	int 	numElements;
+
+	numElements = 0;
+
+	temp = *h;			/* point to the first item in the list */
+
+	while(temp != NULL){
+		numElements++;
+		temp = temp->next;
+	}/*while*/
+	
+	return(numElements);
+}/*size*/
