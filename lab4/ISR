@@ -1,0 +1,27 @@
+void stepperTimer(){
+  cli(); // disable all of the interrupt ==========================
+  
+	//Set timer clear on Comparision CTC
+	TCCR0A |= (1<<WGM12);
+  
+  //need to be set to desired ticks 
+	OCR0A = 0x03e8;
+  
+  //Set inital Value of the timer Counter to 0x0000
+	TCNT0 = 0x0000;
+  
+  //Enable the output compare interrut enable
+	TIMSK0 = (1<<OCIE0A);
+  
+  //ENABLER TIMER interrupt
+  sei();
+  
+  //Set Presaler TO 1
+	TCCR0B = (1<<CS10); 
+  
+}
+
+ISR(IMER0_COMPA_vect){
+  state++;
+  if(state==5) state=0;
+}
