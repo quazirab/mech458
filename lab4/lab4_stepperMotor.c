@@ -26,8 +26,9 @@
 /* Make sure you read it!!! */
 /* global variables */
 /* Avoid using these */
+volatile int state=1;
 
-
+void debug();
 		
 int main(){	
 
@@ -38,49 +39,59 @@ int main(){
 				
 
 	while(1){
-    while((PINA & 0x04) == 0x04);   //waits for PINA to be pressed
-				timerCount(20);
-		while((PINA & 0x04) == 0x00);
-				timerCount(20);
-        
-	  PORTB=0x02      //MOVES CLOCK WISE
-    timerCount( );  //need to find out the time for 30 degrees 
+    	while((PINA & 0x04) == 0x04);   //waits for PINA to be pressed
+	timerCount(20);
+	while((PINA & 0x04) == 0x00);
+	timerCount(20);
+        debug();
 	  
 	}//while
 	
 	return(0);
 }/* main */
 		
+void debug(){
+	switch (state){
+		case (1):				
+		PORTB=0x02      //MOVES CLOCK WISE
+    	  	timerCount( );  //need to find out the time for 30 degrees 
+		state++;
+		break;
+		
+		case (2):
+		PORTB=0x02      //MOVES CLOCK WISE
+    	  	timerCount( );  //need to find out the time for 60 degrees 
+		state++;
+		break;
+		
+		case (3):
+		PORTB=0x02      //MOVES CLOCK WISE
+    	  	timerCount( );  //need to find out the time for 180 degrees 
+		break;
+		
+		case (4):
+		PORTB=0x01      //MOVES COUNTER CLOCK WISE
+    	  	timerCount( );  //need to find out the time for 30 degrees 
+		state++;
+		break;
 
-	
-	
-void stepperTimer(){
-  cli(); // disable all of the interrupt ==========================
-  
-	//Set timer clear on Comparision CTC
-	TCCR0A |= (1<<WGM12);
-  
-  //need to be set to desired ticks 
-	OCR0A = 0x03e8;
-  
-  //Set inital Value of the timer Counter to 0x0000
-	TCNT0 = 0x0000;
-  
-  //Enable the output compare interrut enable
-	TIMSK0 = (1<<OCIE0A);
-  
-  //ENABLER TIMER interrupt
-  sei();
-  
-  //Set Presaler TO 1
-	TCCR0B = (1<<CS10); 
-  
-}
+		case (5):
+		PORTB=0x01      //MOVES COUNTER CLOCK WISE
+    	  	timerCount( );  //need to find out the time for 60 degrees 
+		state++;
+		break;
+		
+		case (6):
+		PORTB=0x01      //MOVES COUNTER CLOCK WISE
+    	  	timerCount( );  //need to find out the time for 180 degrees 
+		state=1;
+		break;
+		
+	}//switch
+		
+		
+}//debug
 
-ISR(IMER0_COMPA_vect){
-  state++;
-  if(state==5) state=0;
-}
 
 /**************************************************************************************/
 /***************************** Timer***************************************************/
