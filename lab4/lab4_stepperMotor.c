@@ -22,16 +22,19 @@
 #include <avr/interrupt.h>
 
 void timerCount();
+void forward(int fCount);
+void backward (int bCount);
 
 /* Make sure you read it!!! */
 /* global variables */
 /* Avoid using these */
-volatile int count=0;
-
+volatile int countStep=0;
+char step[4] = {0x30,0x06,0x28,0x05};
+	
 void debug();
 		
 int main(){	
-	char step[4] = {0x30,0x06,0x28,0x05};
+	
 		
 	
 	//element eTest;		/* A variable to hold the aggregate data type known as element */
@@ -43,25 +46,70 @@ int main(){
 	timerCount(1000);
 	PORTC = 0;
 	
-	while(1){
-		int stepCount=100;
-		int j=0;
-		//int k;
-		for(int i=0;i<stepCount;i++){
-			PORTA = step[j];
-			timerCount(20); 
-			printf(step[j]);
-			j++;
-			
-		if (j>3) j=0;
-			}//for 
-	 	//if(i == stepCount)break;
-	  
-	}//while
+
+			forward(17);
+			timerCount(1000);
+			backward(17);
+			timerCount(1000);
+			forward(33);
+			timerCount(1000);
+			backward(33);
+			timerCount(1000);
+			forward(100);
+			timerCount(1000);
+			backward(100);
+
+	 
 	
 	return(0);
 }/* main */
 		
+
+
+/**************************************************************************************/
+/*****************************Stepper Motor forward************************************/
+/**************************************************************************************/
+
+void forward(int fCount){
+	
+	//double steps = fCount/1.8;
+	int j=0;
+	//int k;
+	for(int i=0;i<fCount;i++){
+		PORTA = step[j];
+		timerCount(20);
+		j++;
+		
+		if (j>3) j=0;
+		
+		countStep++;
+		if(countStep>200)countStep=0;
+	}//for
+		
+}
+
+/**************************************************************************************/
+/*****************************Stepper Motor Backward************************************/
+/**************************************************************************************/
+
+void backward (int bCount){
+	
+	signed int j=3;
+	//int k;
+	for(int i=0;i<bCount;i++){
+		PORTA = step[j];
+		timerCount(20);
+		j--;
+		
+		if (j<0) j=3;
+		
+		countStep--;
+		if(countStep<0)countStep=200;
+	}//fo
+	
+	
+}
+
 
 
 /**************************************************************************************/
