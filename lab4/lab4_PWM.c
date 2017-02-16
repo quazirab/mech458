@@ -18,49 +18,32 @@
 #include <stdlib.h>
 #include <avr/io.h>
 #include <util/delay_basic.h>
-#include<avr/interrupt.h>
+#include <avr/interrupt.h>
 
 /* Make sure you read it!!! */
 /* global variables */
 /* Avoid using these */
 
 
-//USE PD6 for pwm signal
-volatile double dutyCycle=0;
+//USE PB4 for pwm signal
+
 int main(){
 
-	DDRA = 0x00; //SET ALL OF THE PORT A TO INPUT BITS
-  DDRD = 0xFF; //SET ALL OF THE PORT D TO OUTPUT BITS
+	//DDRA = 0x00; //SET ALL OF THE PORT A TO INPUT BITS
+	DDRB = 0xFF; //SET ALL OF THE PORT B TO OUTPUT BITS //step 6
 
-  debug();	
-	while(1){
-    
-  		while((PINA & 0x04) == 0x04);
-				timerCount(20);
-		  while((PINA & 0x04) == 0x00);
-				timerCount(20);
-        dutyCycle = dutyCycle+20;
-				if (dutyCycle=>100) dutyCycle=0;
-	}//while
+	TCCR2A =(1<<COM2A1) | (1<<WGM21) | (1<<WGM20);    //fast PWM Step 1 & 3
+	TIMSK2=(1<<OCIE2A);    //set to Compare match //step 2 
+	
+
+	TCCR2B = (1<<CS20) | (1<<CS21) | (1<<CS22); //prescale to 1024
+
+	OCR2A = 127; //step 5
 	
 	return(0);
 }/* main */
 		
-	
-void debug(){
-	
-		TCCR0A =(1<<COM0A1) | (1<<WGM00) | (1<<WGM01);    //fast PWM
-    TIMSK0=(1<<TOIE0);    //set to overflow
-   
-    OCR0A = (dutyCycle/100)*255;
-    sei();
-		TCCR0B = (1<<CS00);
-		
-}//debug
-	
-ISR(TIMER0_OVF_vect){
-    OCR0A = (dutyCycle/100)*255;
-}//isr
+
 
 		
 void timerCount(int tim){
@@ -97,4 +80,4 @@ void timerCount(int tim){
 		}//if
 	}//whil
 	return;
-}//timer count	
+}//timer count
