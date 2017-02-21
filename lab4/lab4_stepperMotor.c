@@ -1,17 +1,12 @@
-/* Solution Set for the LinkedQueue.c */
 /* 	
 	Course		: UVic Mechatronics 458
-	Milestone	: 3
-	Title		: Data structures for MCUs and the Linked Queue Library
-	Name 1:					Student ID:
-	Name 2:					Student ID:
+	Milestone	: 4 (Stepper Motor)
+	Title		: Stepper Motor
+	Name 1:	Evan McMillan	Student ID: V00203520
+	Name 2:	Quazi Rabbi		Student ID: V00778792
 	
-	Description: You can change the following after you read it.
-	
-	This main routine will only serve as a testing routine for now. At some point you can comment out
-	The main routine, and can use the following library of functions in your other applications
-	To do this...make sure both the .C file and the .H file are in the same directory as the .C file
-	with the MAIN routine (this will make it more convenient)
+	Description: This code initializes the motor with a 50-step rotation to determine the location of the stepper,
+	then rotates clockwise and anti-clockwise by 30 degrees, then 60 degrees, then 180 degrees.
 */
 
 /* include libraries */
@@ -28,36 +23,35 @@ void backward (int bCount);
 /* Make sure you read it!!! */
 /* global variables */
 /* Avoid using these */
-volatile int countStep=0;
-char step[4] = {0x30,0x06,0x28,0x05};
-	
-void debug();
+volatile int countStep=0;				//Global variable to track the location of the stepper
+volatile int coilCount = 0;				//Global variable to track which coil was last used
+char step[4] = {0x30,0x06,0x28,0x05};	//Array containing the bits to send to the stepper driver for each of the four steps
 		
 int main(){	
 	
 		
 	
-	//element eTest;		/* A variable to hold the aggregate data type known as element */
   DDRA = 0xFF; //SET ALL OF THE PORT A TO Output BITS
-  //DDRB = 0xFF; //SET ALL OF THE PORT B TO OUTPUT BITS
 				
-	DDRC = 0xFF;
-	PORTC = 0xf0;
+	DDRC = 0xFF;		//Set PORTC to all output
+	PORTC = 0xf0;		//Set LED bank to the leftmost 4 lights lit, guarantee the routine is running properly
 	timerCount(1000);
-	PORTC = 0;
-	
+	PORTC = 0;			//Set all LEDs to blank
+			
+			forward(50);		//initialize the stepper by rotating forwards 50 steps.
+			timerCount(1000);
 
-			forward(17);
+			forward(17);		//Rotate clockwise approximately 30 degrees
 			timerCount(1000);
-			backward(17);
+			backward(17);		//Rotate anti-clockwise approximately 30 degrees
 			timerCount(1000);
-			forward(33);
+			forward(33);		//Rotate clockwise by 60 degrees
 			timerCount(1000);
-			backward(33);
+			backward(33);		//Rotate anti-clockwise by 60 degrees
 			timerCount(1000);
-			forward(100);
+			forward(100);		//Rotate clockwise by 180 degrees
 			timerCount(1000);
-			backward(100);
+			backward(100);		//Rotate anti-clockwise by 180 degrees
 
 	 
 	
@@ -72,18 +66,16 @@ int main(){
 
 void forward(int fCount){
 	
-	//double steps = fCount/1.8;
-	int j=0;
-	//int k;
 	for(int i=0;i<fCount;i++){
-		PORTA = step[j];
+		coilCount++;					//powers the next coil (clockwise) from the last one that fired
+		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
+		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(20);
-		j++;
+				
 		
-		if (j>3) j=0;
 		
-		countStep++;
-		if(countStep>200)countStep=0;
+		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
+		if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
 		
 }
@@ -94,18 +86,15 @@ void forward(int fCount){
 
 void backward (int bCount){
 	
-	signed int j=3;
-	//int k;
 	for(int i=0;i<bCount;i++){
-		PORTA = step[j];
+		coilCount--;					//powers the previous coil (anti-clockwise) from the last one that fired
+		if (coilCount<0) coilCount=3;	//if the coil moves a full 4 steps, move it back to the fourth coil in order to continue reversing (anti-clockwise)
+		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(20);
-		j--;
 		
-		if (j<0) j=3;
-		
-		countStep--;
-		if(countStep<0)countStep=200;
-	}//fo
+		countStep--;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
+		if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
+	}//for
 	
 	
 }
@@ -134,7 +123,7 @@ void timerCount(int tim){
 	//Set inital Value of the timer Counter to 0x0000
 	TCNT1 = 0x0000;
 	
-	//Enable the output compare interrut enable
+	//Enable the output compare interrupt enable
 	TIMSK1 = TIMSK1|0x02;
 	
 	//Clear the timer interrupt flag and begin timer
