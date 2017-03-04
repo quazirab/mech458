@@ -76,7 +76,7 @@ void startConversion(){
 }
 
 ISR(ADC_vect){
-  dutyCycle = ADC;
+  dutyCycle = ADCH;
   ADC_result_flag = 1;
   startConversion();
 }
