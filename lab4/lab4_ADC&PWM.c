@@ -16,9 +16,13 @@
 
 void setupADC();
 void startConversion();
+void setupPWM();
 
 //PF1 for ADC input 
 //___ for PWM output 
+
+volatile double dutyCycle=0;
+volatile int ADC_result_flag = 0;
 
 int main(){
 
@@ -53,7 +57,7 @@ void setupPWM(){
 	TCCR2B = (1<<CS21); //prescale to 9
 }//setupPWM
 
-ISR(TIMER2_OVF_vect){
+ISR (TIMER2_OVF_vect){
 	if(ADC_result_flag){
 		OCR2A = dutyCycle;
 		ADC_result_flag = 0;
