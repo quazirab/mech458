@@ -25,8 +25,8 @@ void backward (int bCount);
 /* Avoid using these */
 volatile int countStep=0;				//Global variable to track the location of the stepper
 volatile int coilCount = 0;				//Global variable to track which coil was last used
-//char step[4] = {0x30,0x06,0x28,0x05};	//Array containing the bits to send to the stepper driver for each of the four steps
-char step[4] = {0x38,0x0E,0x2B,0x15};
+//char step[4] = {0x30,0x06,0x28,0x05};	//Array containing the bits for single phase full stepping
+char step[4] = {0x36,0x2e,0x2d,0x35};	//Drives step 1&2, 2&3,3&4,4&1; dual phase full stepping
 //PB0 = L4
 //PB1 = L4
 //PB2 = E2
