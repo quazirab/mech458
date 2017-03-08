@@ -1,3 +1,4 @@
+
 /* 	
 	Course		: UVic Mechatronics 458
 	Milestone	: 4 (Stepper Motor)
@@ -60,6 +61,8 @@ int main(){
 			timerCount(1000);
 			backward(100);		//Rotate anti-clockwise by 180 degrees
 */
+			forward(50);
+			timerCount(1000);
 			forward(400);
 			timerCount(1000);
 			backward(400);
@@ -67,9 +70,21 @@ int main(){
 			forward(200);
 			timerCount(50);
 			backward(200);
+			timerCount(50);
+			forward(50);
+			timerCount(50);
+			backward(50);
 			
 			timerCount(3000);
-	 
+			/*
+			forward(50);
+			timerCount(20);
+			backward(50);
+			timerCount(20);
+			forward(100);
+			timerCount(20);
+			backward(50);
+	 */
 	
 	return(0);
 }/* main */
@@ -88,10 +103,12 @@ void forward(int fCount){
 		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(i <= 10) delay -= 1;
-		/*if(i > 5 && i < 10) delay -= 2;
-		if(fCount - i <10 && fCount	- i >=5) delay +=2;*/
-		if(fCount -i <10) delay +=1;
+		/*if(i <= 3) delay -= 2;
+		if(i > 3 && i <= 10) delay -= 1;
+		if(fCount - i <= 10 && fCount - i > 3) delay +=1;
+		if(fCount -i <= 3) delay +=2;*/
+		if(i <= 13) delay -= 1;
+		if(fCount -i <= 13) delay +=1;
 		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 		if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
@@ -109,10 +126,12 @@ void backward (int bCount){
 		if (coilCount<0) coilCount=3;	//if the coil moves a full 4 steps, move it back to the fourth coil in order to continue reversing (anti-clockwise)
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(i <= 10) delay -= 1;
-		/*if(i > 5 && i < 10) delay -= 2;
-		if(bCount - i <10 && bCount	- i >=5) delay +=2;*/
-		if(bCount -i <10) delay +=1;
+		/*if(i <= 3) delay -= 2;
+		if(i > 3 && i <= 10) delay -= 1;
+		if(bCount - i <10 && bCount	- i >3) delay +=1;
+		if(bCount -i <= 3) delay +=2;*/
+		if(i <= 13) delay -= 1;
+		if(bCount -i <= 13) delay +=1;
 		countStep--;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 		if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
@@ -158,4 +177,3 @@ void timerCount(int tim){
 	}
 	return;
 }		
-		
