@@ -33,15 +33,14 @@ void setupInterrupt();
 //PB2 TO IB
 //PB3 TO IA
 
-volatile int dutyCycle;
-volatile int dutyCycle1;								//Global variable for storing the current ADC conversion value
+volatile unsigned char ADClowerbit;
+volatile unsigned char ADChigherbit;								//Global variable for storing the current ADC conversion value
 volatile int ADC_result_flag = 0;							//Global variable for the ADC conversion flag
 const char dcDrive[4] = {0x00,0x04,0x08,0x0c};				//Array containing the DC motor driver truth table
 volatile int STATE=0;
-volatile int lowVal1;
-volatile int lowVal2=1023;
-volatile int higher;
-volatile int lower;
+volatile unsigned short lowVal1;
+volatile unsigned short lowVal2;							//short is 16 bit(2byte)
+
 
 int main(){
 
@@ -77,24 +76,29 @@ int main(){
 /**************************************************************************************/
 /************************************Interrupt***********************************************/
 /**************************************************************************************/
-
 void setupInterrupt(){
-	EICRA |= _BV(ISC00);
+	EICRA |= _BV(ISC00);			//sets to any edges
 	EIMSK |= 0x01;
 }
 
 ISR(INT0_vect){
-	startConversion();
+			
 	if(STATE==0){
-		STATE=1;
-		ADCSRA |= (1<<ADSC);
-		}
+		STATE=1;			//changes the STATE to 1
+		lowVal2=0x03FF;			//intial highest vale to 1023
+		startConversion();		//start conversion, goes to ADC	
+		return;				//gets out of the loop
+		}//if
+	
 	else {
-		STATE=0;		
-		lowVal2=1023;
-	}
-}
-
+		STATE=0;			//next edge
+		ADClowerbit = lowVal2 & 0xFF;	//takes the lower 8 bits of the 16 bit
+		ADChigherbit = lowVal2>>8;	//takes the higer 8 bits of the 16 bit
+		PORTD = (ADChigherbit<<5);	//15-8bits, shifting it right by 5because Adlar =0
+		PORTC = ADClowerbit;		//7-0 bits, lower full bits
+		return;				//gets out of the loop
+	}//else
+}//ISR
 /**************************************************************************************/
 /************************************PWM***********************************************/
 /**************************************************************************************/
@@ -125,24 +129,13 @@ void startConversion(){
 }/*startConversion*/
 
 ISR(ADC_vect){
-	lowVal1 = ADC;
-	dutyCycle1 = ADCL;
-	dutyCycle = ADCH;
-	
-			if(lowVal2>lowVal1){
-				lowVal2=lowVal1;
-				lower = dutyCycle1;
-		 		higher = dutyCycle;
-			}
-			if(STATE==1){ADCSRA |= (1<<ADSC);}
-		 	else{
-				PORTC = lower;
-				PORTD = (higher<<5);
-				
-		lowVal2=1023;
-		lower=0;
-		higher=0;
-		}
+	lowVal1 = ADC;			//puts the full 10 bit value to lowVal1	
+	if(lowVal2>lowVal1){		//if lowVal2 is greater than lowVal1
+		lowVal2=lowVal1;	//lowVal2 is equal to lowVal1 
+	}//if
+	if(STATE==1) startConversion();	//conversion continues till state ==0;			
+		
+
 	
 }//
 
