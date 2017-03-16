@@ -77,10 +77,13 @@ int main(){
 /************************************Interrupt***********************************************/
 /**************************************************************************************/
 void setupInterrupt(){
-	EICRA |= _BV(ISC00);			//sets to any edges
+	EICRA |= _BV(ISC00) | _BV(ISC01);	//sets to any edges
+	EICRA |= _BV(ISC11);				//IN sensor triggers on falling edge
+	EICRA |= _BV(ISC31);				//First optical sensor triggers on 
 	EIMSK |= 0x01;
 }
 
+/*Interrupt 0: RL sensor on PD0*/
 ISR(INT0_vect){
 			
 	if(STATE==0){
@@ -93,12 +96,26 @@ ISR(INT0_vect){
 	else {
 		STATE=0;			//next edge
 		ADClowerbit = lowVal2 & 0xFF;	//takes the lower 8 bits of the 16 bit
-		ADChigherbit = lowVal2>>8;	//takes the higer 8 bits of the 16 bit
+		ADChigherbit = lowVal2>>8;	//takes the higher 8 bits of the 16 bit
 		PORTD = (ADChigherbit<<5);	//15-8bits, shifting it right by 5because Adlar =0
 		PORTC = ADClowerbit;		//7-0 bits, lower full bits
 		return;				//gets out of the loop
 	}//else
 }//ISR
+
+/*Interrupt 1: inductive sensor on PD1*/
+ISR(INT1_vect){
+	/*Record if it is a metal. TRUE/FALSE*/
+}//ISR
+
+/*Interrupt 3: First optical sensor on PD3*/
+ISR(INT3_vect){
+	/*Initialize new list element when the first optical sensor is triggered.*/
+}//ISR
+
+ISR(BADISR_vect){
+	/*Error handler?*/
+}//BADISR
 /**************************************************************************************/
 /************************************PWM***********************************************/
 /**************************************************************************************/
