@@ -33,13 +33,16 @@ void setupInterrupt();
 //PB2 TO IB
 //PB3 TO IA
 
-volatile double dutyCycle = 0;
-volatile int dutyCycle1=0;								//Global variable for storing the current ADC conversion value
+volatile int dutyCycle;
+volatile int dutyCycle1;								//Global variable for storing the current ADC conversion value
 volatile int ADC_result_flag = 0;							//Global variable for the ADC conversion flag
 const char dcDrive[4] = {0x00,0x04,0x08,0x0c};				//Array containing the DC motor driver truth table
 volatile int STATE=0;
 volatile int lowVal1;
-volatile int lowVal2;
+volatile int lowVal2=1023;
+volatile int higher;
+volatile int lower;
+
 int main(){
 
 	DDRB = 0b10001111; 	//SET PORT B LOWER 4 BITS TO OUTPUT, WITH PB4,PB5,PB6 TO INPUT, AND PB7 TO OUTPUT
@@ -47,6 +50,7 @@ int main(){
 	DDRD = 0xF0;	//SET ALL OF THE PORT D TO OUTPUT BITS
 	DDRF = 0x00;	//SET ALL OF PORT F TO INPUT BITS
 	
+	PORTB = dcDrive[1];
 	cli();				//Disable Global interrupts
 	setupADC();			//Run the ADC Setup Subroutine below
 	setupPWM();			//Run the PWM setup Subroutine below
@@ -54,42 +58,18 @@ int main(){
 	
 	sei();				//Enable global interrupts
 	
-
 	
-	lowVal2=1023;
-	while(1){	
-		if ((PINB & 0x10) == 0x10){
-		PORTB = dcDrive[1];	
-		}
-		if((PINB & 0x10) == 0x00){
+	
+	while(1){
+	if ((PINB & 0x10) == 0x10){
+		PORTB = dcDrive[1];
+	}
+	if((PINB & 0x10) == 0x00){
 		
 		PORTB = 0;
-		}
-		
-		if(STATE==1){
-			startConversion();
-			
-			if (ADC_result_flag==1)
-			{
-				lowVal1 = dutyCycle+dutyCycle1;
-				
-				if (lowVal2>=lowVal1)
-				{
-					lowVal2=lowVal1;
-					PORTC = dutyCycle;
-					PORTD = (dutyCycle1>>1);
-					ADC_result_flag=0;
-				}
-				
-				
-			}
-			
-		}
-		if(STATE==0){
-			lowVal2=1023;
-			}
-
- 		
+	}
+	
+			 
 	}//while
 	return(0);
 }/* main */
@@ -99,30 +79,29 @@ int main(){
 /**************************************************************************************/
 
 void setupInterrupt(){
-	EICRA |= _BV(ISC01)| _BV(ISC00);
-	EICRA |= _BV(ISC31); //| _BV(ISC30);
-	EIMSK |= 0x09;
+	EICRA |= _BV(ISC00);
+	EIMSK |= 0x01;
 }
 
 ISR(INT0_vect){
-	/* Toggle PORTA bit 0 */
-	STATE=1;
-	
+	startConversion();
+	if(STATE==0){
+		STATE=1;
+		ADCSRA |= (1<<ADSC);
+		}
+	else {
+		STATE=0;		
+		lowVal2=1023;
+	}
 }
 
-ISR(INT3_vect){
-	/* Toggle PORTA bit 3 */
-	STATE=0;
-
-}
 /**************************************************************************************/
 /************************************PWM***********************************************/
 /**************************************************************************************/
 void setupPWM(){
 	TCCR0A =(1<<COM0A1) | (1<<WGM01) | (1<<WGM00);	//Set timer counter compare register to Fast PWM
-	//TIMSK0=(1<<OCIE0A);							//Disabled timer mask interrupt for the PWM, as no timer ISR has been set
 	TCCR0B = (1<<CS01);								//prescale to 9
-	OCR0A = 160;		
+	OCR0A = 100;		
 }//setupPWM
 
 
@@ -136,7 +115,7 @@ void brakeVcc(int tim){
 /*************************************ADC**********************************************/
 /**************************************************************************************/
 void setupADC(){
-	ADMUX = (1<< REFS0)|(1<<MUX0)|(1<<ADLAR);			// Left adjust, and use VCC as top reference
+	ADMUX = (1<< REFS0)|(1<<MUX0);						// Left adjust, and use VCC as top reference
 	ADCSRA=(1<<ADEN)|(1<<ADIE);							//Set the values of the ADC Enable and ADC Interrupt Enable bits to 1
 	DIDR0 = (1<<ADC1D);									//Turns off the digital input buffer for ADC1 on PF1
 }/*setupADC*/
@@ -146,11 +125,26 @@ void startConversion(){
 }/*startConversion*/
 
 ISR(ADC_vect){
+	lowVal1 = ADC;
 	dutyCycle1 = ADCL;
-	dutyCycle = ADCH;									//Read the high bits of the ADC and set to variable 'dutyCycle'
-	ADC_result_flag = 1;								//Set a variable flag to 1 showing that an ADC conversion has been done.
-	startConversion();									
-}/*ISR*/
+	dutyCycle = ADCH;
+	
+			if(lowVal2>lowVal1){
+				lowVal2=lowVal1;
+				lower = dutyCycle1;
+		 		higher = dutyCycle;
+			}
+			if(STATE==1){ADCSRA |= (1<<ADSC);}
+		 	else{
+				PORTC = lower;
+				PORTD = (higher<<5);
+				
+		lowVal2=1023;
+		lower=0;
+		higher=0;
+		}
+	
+}//
 
 /**************************************************************************************/
 /*************************************Timer********************************************/
