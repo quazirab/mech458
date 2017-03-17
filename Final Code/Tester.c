@@ -68,6 +68,8 @@ int main(){
 		PORTB = 0;
 	}
 	
+	
+
 			 
 	}//while
 	return(0);
@@ -77,30 +79,18 @@ int main(){
 /************************************Interrupt***********************************************/
 /**************************************************************************************/
 void setupInterrupt(){
-	EICRA |= _BV(ISC00) | _BV(ISC01);	//sets to any edges
+	EICRA |= _BV(ISC00)|_BV(ISC01);		//sets rising edge
 	EICRA |= _BV(ISC11);				//IN sensor triggers on falling edge
 	EICRA |= _BV(ISC31);				//First optical sensor triggers on 
 	EIMSK |= 0x01;
 }
 
 /*Interrupt 0: RL sensor on PD0*/
-ISR(INT0_vect){
-			
-	if(STATE==0){
-		STATE=1;			//changes the STATE to 1
-		lowVal2=0x03FF;			//intial highest vale to 1023
-		startConversion();		//start conversion, goes to ADC	
-		return;				//gets out of the loop
-		}//if
+ISR(INT0_vect){				//ADC Interrupt
+		lowVal2=0x03FF;		//intial highest vale to 1023
+		startConversion();	//start conversion, goes to ADC	
+		STATE =1;
 	
-	else {
-		STATE=0;			//next edge
-		ADClowerbit = lowVal2 & 0xFF;	//takes the lower 8 bits of the 16 bit
-		ADChigherbit = lowVal2>>8;	//takes the higher 8 bits of the 16 bit
-		PORTD = (ADChigherbit<<5);	//15-8bits, shifting it right by 5because Adlar =0
-		PORTC = ADClowerbit;		//7-0 bits, lower full bits
-		return;				//gets out of the loop
-	}//else
 }//ISR
 
 /*Interrupt 1: inductive sensor on PD1*/
@@ -122,7 +112,7 @@ ISR(BADISR_vect){
 void setupPWM(){
 	TCCR0A =(1<<COM0A1) | (1<<WGM01) | (1<<WGM00);	//Set timer counter compare register to Fast PWM
 	TCCR0B = (1<<CS01);								//prescale to 9
-	OCR0A = 100;		
+	OCR0A = 165;		
 }//setupPWM
 
 
@@ -146,11 +136,17 @@ void startConversion(){
 }/*startConversion*/
 
 ISR(ADC_vect){
-	lowVal1 = ADC;			//puts the full 10 bit value to lowVal1	
-	if(lowVal2>lowVal1){		//if lowVal2 is greater than lowVal1
-		lowVal2=lowVal1;	//lowVal2 is equal to lowVal1 
-	}//if
-	if(STATE==1) startConversion();	//conversion continues till state ==0;			
+ 	lowVal1 = ADC;			//puts the full 10 bit value to lowVal1	
+ 	if(lowVal2>lowVal1){		//if lowVal2 is greater than lowVal1
+ 		lowVal2=lowVal1;	//lowVal2 is equal to lowVal1 
+ 	}//if
+	if((PIND & 0x01) == 0x01) startConversion();	//conversion continues till state ==0;
+	else{
+		ADClowerbit = lowVal2 & 0xFF;	//takes the lower 8 bits of the 16 bit
+ 		ADChigherbit = lowVal2>>8;	//takes the higher 8 bits of the 16 bit
+ 		PORTD = (ADChigherbit<<5);	//15-8bits, shifting it right by 5because Adlar =0
+		PORTC = ADClowerbit;		//7-0 bits, lower full bits
+	}			
 		
 
 	
