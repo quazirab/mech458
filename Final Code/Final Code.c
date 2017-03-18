@@ -112,10 +112,14 @@ int main(){
 		PORTB = 0;
 		}//if
 	if(Status_flag){
+			
 			dequeue(&head,&tail, &rtncylinder);
 			stepperpos(rtncylinder->p.pos);
+			if(BELT_STATUS==0) BELT_STATUS=1;
+			free(rtncylinder);
 			Status_flag--;
 			if(Status_flag<0) Status_flag=0;
+			
 		}//if	 
 	}//while
 	return(0);
@@ -180,10 +184,6 @@ void setupInterrupt(){
 /*Interrupt 0: OI sensor on PD0*/
 ISR(INT0_vect){											//OI 
 	/*Initialize new list element when the first optical sensor is triggered.*/
-// 		initcylinder(&newcylinder);
-// 		newcylinder->p.number = number;				//puts the position number of the cylinder in the newcylinder
-// 		enqueue(&head,&tail, &newcylinder);			//enqueues the new cylinder
-// 		number++;
 }//ISR
 
 /*Interrupt 1: OR on PD1*/
@@ -195,12 +195,11 @@ ISR(INT1_vect){
 /*Interrupt 1: OR on PD1*/
 ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
-	if (BELT_STATUS==1)BELT_STATUS=0;		//stops the belt if the 
-	else BELT_STATUS =1;
+	BELT_STATUS=0;		//stops the belt if the
 }
-/*Interrupt 3: First optical sensor on PD3*/
+/*Interrupt 3: Hall Effect on PD3*/
 ISR(INT3_vect){
-	
+	countStep=0;		//resest the counterstep to home;
 }//ISR
 
 
@@ -214,7 +213,7 @@ ISR(BADISR_vect){
 void setupPWM(){
 	TCCR0A =(1<<COM0A1) | (1<<WGM01) | (1<<WGM00);	//Set timer counter compare register to Fast PWM
 	TCCR0B = (1<<CS01);								//prescale to 9
-	OCR0A = 160;		
+	OCR0A = pwm;		
 }//setupPWM
 
 
