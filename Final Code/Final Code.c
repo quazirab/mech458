@@ -16,17 +16,26 @@
 #include <util/delay_basic.h>
 #include <avr/interrupt.h>
 
-typedef struct cylinder{
+const uint16_t Al_max = 128;
+const uint16_t Steel_max = 800;
+const uint16_t Steel_min = 600;
+const uint16_t Black_min = 935;
+const uint16_t white_max =930;
+const uint16_t whie_min = 900;
+
+typedef struct {
 	uint16_t  ADC_value; 	/* Stores for ADC Value */
-	uint8_t  metal_value; 	/* 0: plastic, 1: metal */
-	uint8_t  number;
+	uint8_t  pos;
+	uint8_t number;
+} part;
+
+typedef struct cylinder{
+	part		p;
 	struct cylinder *next;
 } cylinder;
 
-typedef struct stepper{
-	uint8_t  pos;		/*position number*/
-	struct stepper *next;
-} stepper;
+
+
 
 void setupADC();
 void setupPWM();
@@ -35,12 +44,10 @@ void breakVcc(int tim);
 void setupInterrupt();
 void clockwise(int clCount);
 void cclockwise (int cclCount);
-void initcylinder(volatile cylinder **newcylinder);
-void initstepper(volatile stepper **newstepper);
-void enqueue(volatile cylinder **h,volatile cylinder **t,volatile cylinder **nL);
-void stepperenqueue(volatile stepper **h,volatile stepper **t,volatile stepper **nL);
-void dequeue(volatile cylinder **h,volatile cylinder **t,volatile cylinder **deQueuedcylinder);
-void stepperdequeue(volatile stepper **h,volatile stepper **t,volatile stepper **deQueuedstepper);
+void initcylinder( cylinder **newcylinder);
+void enqueue(cylinder **h, cylinder **t,cylinder **nL);
+void dequeue( cylinder **h, cylinder **t, cylinder **deQueuedcylinder);
+
 
 /*Usage of pins in this program*/
 //PORTC for LEDs
@@ -58,7 +65,7 @@ void stepperdequeue(volatile stepper **h,volatile stepper **t,volatile stepper *
 //PB4 = L1
 //PB5 = E1
 
-
+volatile uint8_t number = 0;
 volatile unsigned char ADClowerbit;
 volatile unsigned char ADChigherbit;						//Global variable for storing the current ADC conversion value
 volatile uint8_t Status_flag = 0;							//Global variable for the Status flag for newcylinder results found or not
@@ -73,14 +80,10 @@ cylinder *newcylinder =NULL;								//cylinder pointer for the new node to be ad
 cylinder *tail = NULL;										//cylinder pointer for the tail of the queue
 cylinder *head = NULL;										//cylinder pointer for the head of the queue
 cylinder *rtncylinder = NULL;								//cylinder pointer for returning the value of the node that has been dequeued
-stepper *newstepper = NULL;
-stepper *Stail = NULL;
-stepper *Shead = NULL;
-stepper *rtnstepper = NULL;
-volatile uint8_t metalState = 0;							//sees if the cylinder is about to enter the LE or not
-volatile uint8_t metal=0;
-volatile uint8_t number = 0;							//number in the positon
-volatile uint8_t pos = 0;								//value of the stepper position - 1 - white, 2 - black, 3 - steel , 4 - alu
+void stepperpos(uint8_t pos);
+volatile uint8_t fallingStatus = 0;
+
+//volatile uint8_t pos = 0;								//value of the stepper position - 1 - white, 2 - black, 3 - steel , 4 - alu
 
 
 int main(){
@@ -111,13 +114,28 @@ int main(){
 		PORTB = 0;
 	}
 
-		
+	if(fallingStatus)PORTB=0;
+	else PORTB = dcDrive[1];
 
+	if(Status_flag==1){
+		dequeue(&head,&tail,&rtncylinder);
+		stepperpos(rtncylinder->p.pos);
+		free(rtncylinder);
+		Status_flag=0;
+	}
 	
 			 
 	}//while
 	return(0);
 }/* main */
+
+
+/**************************************************************************************/
+/*****************************Stepper Motor Clockwise**********************************/
+/**************************************************************************************/
+void stepperpos(uint8_t pos){
+	clockwise(100);	
+}
 
 /**************************************************************************************/
 /*****************************Stepper Motor Clockwise**********************************/
@@ -163,9 +181,9 @@ void cclockwise (int cclCount){
 /**************************************************************************************/
 void setupInterrupt(){
 	EICRA |= _BV(ISC00);				//sets to any edges
-	EICRA |= _BV(ISC11);				//IN sensor triggers on falling edge
+	EICRA |= _BV(ISC11);				//EX sensor triggers on falling edge
 	EICRA |= _BV(ISC31);				//First optical sensor triggers on 
-	EIMSK |= 0x01;						//needs to changed
+	EIMSK |= 0x09;						//needs to changed
 }
 
 /*Interrupt 0: RL sensor on PD0*/
@@ -186,14 +204,19 @@ ISR(INT0_vect){
 /*Interrupt 1: inductive sensor on PD1*/
 ISR(INT1_vect){
 	/*Record if it is a metal. TRUE/FALSE*/
-	metal = 1;
+	
+		PORTC = 0xFF;
+
+
+		
+	
 }//ISR
 
 /*Interrupt 3: First optical sensor on PD3*/
 ISR(INT3_vect){
 	/*Initialize new list element when the first optical sensor is triggered.*/
 	initcylinder(&newcylinder);
-	newcylinder->number = number;				//puts the position number of the cylinder in the newcylinder
+	newcylinder->p.number = number;				//puts the position number of the cylinder in the newcylinder
 	enqueue(&head,&tail, &newcylinder);			//enqueues the new cylinder
 	number++;
 }//ISR
@@ -209,7 +232,7 @@ ISR(BADISR_vect){
 void setupPWM(){
 	TCCR0A =(1<<COM0A1) | (1<<WGM01) | (1<<WGM00);	//Set timer counter compare register to Fast PWM
 	TCCR0B = (1<<CS01);								//prescale to 9
-	OCR0A = 100;		
+	OCR0A = 160;		
 }//setupPWM
 
 
@@ -235,31 +258,39 @@ ISR(ADC_vect){
 	}//if
 	if(STATE==1) ADCSRA |= (1<<ADSC);        //Set the ADC Start Conversion bit on ADCSRA to 1.;	//conversion continues till state ==0;
 	else {
-		if (head->ADC_value=NULL) {		//checks if the head has any ADC value or not
-			head->ADC_value=lowVal2;	//assigns the ADC value
-			dequeue(&head,&tail,&rtncylinder);
-			switch (rtncylinder->metal_value){
-				case '1' : 
-					if (rtncylinder->ADC_value>100 && rtncylinder->ADC_value<150) pos = 1;
-					else pos =3;
-					break;
-					
-					free(rtncylinder); 
-				}//switch
-			newstepper->pos=pos;	
-			stepperenqueue(&Shead, &Stail, &newstepper);
-			}//if
-		else if (head->next->ADC_value=NULL){	//if the head has any ADC value, checks the next one
-			head->next->next->ADC_value=lowVal2; //assigns the ADC value to the next null one
+		if (head->p.ADC_value==NULL) {		//checks if the head has any ADC value or not
+			head->p.ADC_value=lowVal2;
+			//PORTC = head->p.ADC_value;
+			if (head->p.ADC_value<Al_max){//aluminum
+					head->p.pos=4;	
+		 
+				}//if
+			else if (head->p.ADC_value>Steel_min && head->p.ADC_value<Steel_max){//aluminum
+				head->p.pos=3;
+				
+				}//if
+			else if (head->p.ADC_value>Black_min){//aluminum
+				head->p.pos=2;
+				}//if
 			
+			else if (head->p.ADC_value<white_max&&head->p.ADC_value>whie_min){//aluminum
+				head->p.pos=1;
+				}//if
+			/*PORTC = head->p.pos;*/	
+			Status_flag =1;
+			return;
 		}//if
-		else if (head->next->next->ADC_value=NULL){	//if the head has any ADC value, checks the next one
-			head->next->next->ADC_value=lowVal2;	//assigns the ADC value to the next null one
-			
-		}//if
-		else if (head->next->next->next->ADC_value=NULL){	//if the head has any ADC value, checks the next one
-			head->next->next->next->next->ADC_value=lowVal2;	//assigns the ADC value to the next null one
-		}//if
+// 		else if (head->next->ADC_value=NULL){	//if the head has any ADC value, checks the next one
+// 			head->next->next->ADC_value=lowVal2; //assigns the ADC value to the next null one
+// 			
+// 		}//if
+// 		else if (head->next->next->ADC_value=NULL){	//if the head has any ADC value, checks the next one
+// 			head->next->next->ADC_value=lowVal2;	//assigns the ADC value to the next null one
+// 			
+// 		}//if
+// 		else if (head->next->next->next->ADC_value=NULL){	//if the head has any ADC value, checks the next one
+// 			head->next->next->next->next->ADC_value=lowVal2;	//assigns the ADC value to the next null one
+// 		}//if
 	}//else
 }//ISR
 
@@ -272,19 +303,12 @@ ISR(ADC_vect){
 * DESC: This initializes a cylinder and returns the pointer to the new cylinder or NULL if error 
 * INPUT: the head and tail pointers by reference
 */
-void initcylinder(volatile cylinder **newcylinder){
+void initcylinder( cylinder **newcylinder){
 	//cylinder *l;
 	*newcylinder = malloc(sizeof(cylinder));
 	(*newcylinder)->next = NULL;
 	return;
 }/*initcylinder*/
-
-void initstepper(volatile stepper **newstepper){
-	//cylinder *l;
-	*newstepper = malloc(sizeof(stepper));
-	(*newstepper)->next = NULL;
-	return;
-	}/*initstepper*/
 
 
 
@@ -294,7 +318,7 @@ void initstepper(volatile stepper **newstepper){
 *  INPUT: the head and tail pointers, and a pointer to the new cylinder that was created 
 */
 /* will put an item at the tail of the queue */
-void enqueue(volatile cylinder **h,volatile cylinder **t,volatile cylinder **nL){
+void enqueue( cylinder **h, cylinder **t, cylinder **nL){
 
 	if (*t != NULL){
 		/* Not an empty queue */
@@ -312,24 +336,6 @@ void enqueue(volatile cylinder **h,volatile cylinder **t,volatile cylinder **nL)
 }/*enqueue*/
 
 
-void stepperenqueue(volatile stepper **h,volatile stepper **t,volatile stepper **nL){
-
-	if (*t != NULL){
-		/* Not an empty queue */
-		(*t)->next = *nL;
-		*t = *nL; //(*t)->next;
-		}/*if*/
-		else{
-			/* It's an empty Queue */
-			//(*h)->next = *nL;
-			//should be this
-			*h = *nL;
-			*t = *nL;
-			}/* else */
-			return;
-}/*stepperenqueue*/
-
-
 
 
 
@@ -339,7 +345,7 @@ void stepperenqueue(volatile stepper **h,volatile stepper **t,volatile stepper *
 * 		 which the removed cylinder will be assigned to
 */
 /* This will remove the cylinder and element within the cylinder from the head of the queue */
-void dequeue(volatile cylinder **h,volatile cylinder **t,volatile cylinder **deQueuedcylinder){
+void dequeue( cylinder **h, cylinder **t, cylinder **deQueuedcylinder){
 	/* ENTER YOUR CODE HERE */
 	*deQueuedcylinder = *h;	// Will set to NULL if Head points to NULL
 	/* Ensure it is not an empty queue */
@@ -351,15 +357,42 @@ void dequeue(volatile cylinder **h,volatile cylinder **t,volatile cylinder **deQ
 	return;
 }/*dequeue*/
 
+/**************************************************************************************/
+/*************************************Timer********************************************/
+/**************************************************************************************/
 
-void stepperdequeue(volatile stepper **h,volatile  stepper **t,volatile stepper **deQueuedstepper){
-	/* ENTER YOUR CODE HERE */
-	*deQueuedstepper = *h;	// Will set to NULL if Head points to NULL
-	/* Ensure it is not an empty queue */
-	if (*h != NULL){
-		*h = (*h)->next;	//Set *h to be the next node in the cylindered list
-		}/*if*/
-		if (*h==NULL)*t=NULL;
-		
-		return;
-}/*stepperdequeue*/
+void timerCount(int tim){
+	
+	int i = 0;
+	
+	//Set Presaler TO 1
+	TCCR1B = (1<<CS10);
+	
+	//Set timer clear on Comparision CTC
+	TCCR1B |= (1<<WGM12);
+	
+	
+	
+	//Comparison Register to 1000 cycles for 1 ms
+	OCR1A = 0x03e8;
+	
+	//Set inital Value of the timer Counter to 0x0000
+	TCNT1 = 0x0000;
+	
+	//Enable the output compare interrupt enable
+	//TIMSK1 = TIMSK1|0x02;						//Timer mask is disabled in order to not need an ISR routine for it.
+	
+	//Clear the timer interrupt flag and begin timer
+	TIFR1 = (1<<OCF1A);
+	
+	//Poll the timer to determine when the timer has reached 1ms
+	//Timer is set for 1 ms, so it will be in while for tim X 1ms.
+	while(i<tim){
+		if((TIFR1 & 0x02)==0x02){  // sees if the 0CF1A flag is up
+			
+			TIFR1 =(1<<OCF1A);
+			i++;
+		}//if
+	}//while
+	return;
+}//timerCount
