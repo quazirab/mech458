@@ -25,7 +25,7 @@ const uint16_t whie_min = 900;
 const uint8_t pwm = 160;
 
 typedef struct {
-	uint8_t  pos;
+	int  pos;
 	uint8_t number;
 } part;
 
@@ -45,8 +45,9 @@ void cclockwise (int cclCount);
 void initcylinder( cylinder **newcylinder);
 void enqueue(cylinder **h, cylinder **t,cylinder **nL);
 void dequeue( cylinder **h, cylinder **t, cylinder **deQueuedcylinder);
-void stepperpos(uint8_t pos);
+void stepperpos(int pos);
 void StepperHome();
+volatile int posi = 0;
 
 
 /*Usage of pins in this program*/
@@ -75,13 +76,15 @@ volatile unsigned short lowVal2;							//short is 16 bit(2byte)
 volatile int countStep=0;									//Global variable to track the location of the stepper
 volatile int coilCount = 0;									//Global variable to track which coil was last used
 volatile int Status_flag = 0;								//Stepper operation only when not 0;
-volatile int Status_flag
+volatile int stepper_flag=1;
 char step[4] = {0x36,0x2e,0x2d,0x35};						//Drives step 1&2, 2&3,3&4,4&1; dual phase full stepping
 cylinder *newcylinder =NULL;								//cylinder pointer for the new node to be added on each input
 cylinder *tail = NULL;										//cylinder pointer for the tail of the queue
 cylinder *head = NULL;										//cylinder pointer for the head of the queue
 cylinder *rtncylinder = NULL;								//cylinder pointer for returning the value of the node that has been dequeued
 volatile uint8_t BELT_STATUS = 1;							//1-BELT MOVING, 0 FOR BELT STOP
+volatile int stepperHome = 0;
+volatile int num = 0;
 
 
 //volatile uint8_t pos = 0;								//value of the stepper position - 1 - white, 2 - black, 3 - steel , 4 - alu
@@ -89,33 +92,30 @@ volatile uint8_t BELT_STATUS = 1;							//1-BELT MOVING, 0 FOR BELT STOP
 
 int main(){
 
-	DDRB = 0x0F; 	//SET PORT B LOWER 4 BITS TO OUTPUT, WITH PB4,PB5,PB6 TO INPUT, AND PB7 TO OUTPUT
+	DDRB = 0x8F; 	//SET PORT B LOWER 4 BITS TO OUTPUT, WITH PB4,PB5,PB6 TO INPUT, AND PB7 TO OUTPUT
 	DDRC = 0xFF;	//SET ALL OF THE PORT C TO OUTPUT BITS
 	DDRD = 0xF0;	//SET ALL OF THE PORT D TO OUTPUT BITS
 	DDRF = 0x00;	//SET ALL OF PORT F TO INPUT BITS
 	
 	
 	cli();				//Disable Global interrupts
-	setupADC();			//Run the ADC Setup Function below
 	setupPWM();			//Run the PWM setup Function below
+	setupADC();			//Run the ADC Setup Function below
+	
 	setupInterrupt();	//Sets up all the interrupts
 	sei();				//Enable global interrupts
 	StepperHome();		//brings the stepper to position
-
+	PORTB = dcDrive[1];
+	
 	while(1){
-		
-	if ((PINB & 0x10) == 0x10){
-		if (BELT_STATUS) PORTB = dcDrive[1];
-		else PORTB = 0;
-		}//if
-	else{
-		PORTB = 0;
-		}//if
+	
 	if(Status_flag){
-			
+	
 			dequeue(&head,&tail, &rtncylinder);
+			stepper_flag =0;
 			stepperpos(rtncylinder->p.pos);
-			if(BELT_STATUS==0) BELT_STATUS=1;
+			stepper_flag=1;
+			PORTB = dcDrive[1];
 			free(rtncylinder);
 			Status_flag--;
 			if(Status_flag<0) Status_flag=0;
@@ -129,8 +129,18 @@ int main(){
 /**************************************************************************************/
 /*****************************Stepper Motor Clockwise**********************************/
 /**************************************************************************************/
-void stepperpos(uint8_t pos){
+void stepperpos(int pos){
 		clockwise(50*pos);
+}
+
+void StepperHome(){
+	while (!stepperHome) 
+	{
+		PORTA = step[coilCount];
+		timerCount(20);
+		coilCount++;
+		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
+	}
 }
 
 /**************************************************************************************/
@@ -175,7 +185,7 @@ void cclockwise (int cclCount){
 /**************************************************************************************/
 void setupInterrupt(){
 	EICRA |= _BV(ISC00)|_BV(ISC01);		//OI - FOR INITIATING A LINK LIST - RISING EDGE
-	EICRA |= _BV(ISC10);				//OR - FOR ADC VALUE - ANY EDGE
+	EICRA |= _BV(ISC10)|_BV(ISC11);				//OR - FOR ADC VALUE - ANY EDGE
 	EICRA |= _BV(ISC21);				//EX - STEPPER WAITER - FALLING EDGE
 	EICRA |= _BV(ISC31);				//HE - RESESTS THE STEPPER COUNT - FALLING EDGE
 	EIMSK |= 0x0F;						//needs to changed
@@ -191,15 +201,18 @@ ISR(INT1_vect){
 	/*ADC VALUE*/
 	lowVal2=0x03FF;							//intial highest vale to 1023
 	ADCSRA |= (1<<ADSC);					//start conversion, goes to ADC	
+	
 }//ISR
 /*Interrupt 1: OR on PD1*/
 ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
-	BELT_STATUS=0;		//stops the belt if the
+	//stops the belt if the
+	if(!stepper_flag) PORTB =0;
 }
 /*Interrupt 3: Hall Effect on PD3*/
 ISR(INT3_vect){
 	countStep=0;		//resest the counterstep to home;
+	stepperHome=1;
 }//ISR
 
 
@@ -213,9 +226,15 @@ ISR(BADISR_vect){
 void setupPWM(){
 	TCCR0A =(1<<COM0A1) | (1<<WGM01) | (1<<WGM00);	//Set timer counter compare register to Fast PWM
 	TCCR0B = (1<<CS01);								//prescale to 9
-	OCR0A = pwm;		
+	OCR0A = 165;
 }//setupPWM
 
+
+/*Subroutine to brake to VCC for 'tim' milliseconds. New motor direction is set in the main code after this is called.*/
+void brakeVcc(int tim){
+	PORTB  = dcDrive[0];	//Brake to VCC before changing direction
+	timerCount(tim);		//Delay
+}
 
 /**************************************************************************************/
 /*************************************ADC**********************************************/
@@ -231,28 +250,37 @@ ISR(ADC_vect){
 	if(lowVal2>lowVal1){								//if lowVal2 is greater than lowVal1
 		lowVal2=lowVal1;								//lowVal2 is equal to lowVal1
 	}//if
-	if((PIND & 0x01) == 0x01) ADCSRA |= (1<<ADSC);			//conversion continues till state ==0;
+	if((PIND & 0x02)==0x02) {
+		ADCSRA |= (1<<ADSC);			//conversion continues till state ==0;
+	
+		}
 	else{
 		initcylinder(&newcylinder);							//Initialize the newcylinder
+			num++;
 			/*1 - white, 2 - black, 3 - steel , 4 - alu*/
-			if (lowVal2<Al_max){							//aluminum
-					newcylinder->p.pos=4;	
-				}//if
+			if (lowVal2<200){							//aluminum
+				newcylinder->p.pos=4;
+			}//if
 			else if (lowVal2>Steel_min && lowVal2<Steel_max){//STEEL
-					newcylinder->p.pos=3;
-				}//if
+				newcylinder->p.pos=3;
+			}//if
 			else if (lowVal2>Black_min){					//BLACK
 					newcylinder->p.pos=2;
+				
 				}//if
 			
 			else if (lowVal2<white_max && lowVal2>whie_min){//WHITE
 					newcylinder->p.pos=1;
+				
 				}//if
-			else PORTC = 0XFF;	
+			else newcylinder->p.pos=5;
+			PORTC = newcylinder->p.pos;
 			enqueue(&head,&tail, &newcylinder);				//enqueues the new cylinder
 			Status_flag ++;								// 1 - turns on stepper
-		}//if
-
+	
+			
+			free(newcylinder);
+			return;
 	}//else
 }//ISR
 
