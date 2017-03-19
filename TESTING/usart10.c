@@ -1,69 +1,67 @@
-#include <stdlib.h>
-#include <avr/io.h>
+/*
+ * usart.c
+ *
+ * Created: 3/18/2017 11:16:57 PM
+ * Author : Quazi
+ */ 
 
-#include <util/delay_basic.h>
+#include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define BAUD  9600
-#define BRC ((1000000/16/BAUD)-1)
 
-void timerCount(int tim);
+#define F_CPU 1000000
+#define BAUD 9600
+#define BRC ((F_CPU/16/BAUD)-1)
+#define  TX_BUFFER_SIZE 128
 
-//PD3 = TX
+char serialBuffer[TX_BUFFER_SIZE];
+uint8_t serialReadPos = 0;
+uint8_t serialWritePos = 0;
 
-int main(){
-	DDRC=0xFF; 
+void appendSerial (char c);
+void serialWrite(char c[]);
+
+int main(void)
+{
 	UBRR1H = (BRC>>8);
 	UBRR1L = BRC;
 	
-	UCSR1B = (1<<TXEN1);
-	UCSR1C = (1<<UCSZ11)|(1<<UCSZ10);   //8bit
+	UCSR1B = (1<<TXEN1)|(1<<TXCIE1);		//TX,TX vector 
+	UCSR1C = (1<<UCSZ11)|(1<<UCSZ10);		//8 bit
 	
-	while(1){
-		while ( !( UCSR1A & (1<<UDRE1)) )
-		PORTC = 8;
-		UDR1 = '8';
-		timerCount(2000);
+	sei();
+	
+	serialWrite("Hello\n\r");
+	
+    /* Replace with your application code */
+    while (1) 
+    {
+			
+    }
+}
+
+void appendSerial(char c){
+	serialBuffer[serialWritePos] = c;							//add the character to the buffer
+	serialWritePos++;
+	if(serialWritePos>=TX_BUFFER_SIZE) serialWritePos=0;		//if end move to the begining 
+}
+
+ISR(USART1_TX_vect){
+	if(serialReadPos!=serialWritePos){							//if no data to read then move data 
+		UDR1 = serialBuffer[serialReadPos];
+		serialReadPos++;
+		
+		if(serialReadPos>=TX_BUFFER_SIZE){						//end of the array
+			serialReadPos=0;
+		}
 	}
 }
-	
 
-	/**************************************************************************************/
-	/***************************** Timer***************************************************/
-	/**************************************************************************************/
-
-	void timerCount(int tim){
-		
-		int i = 0;
-		
-		//Set Presaler TO 1
-		TCCR1B = (1<<CS10);
-		
-		//Set timer clear on Comparision CTC
-		TCCR1B |= (1<<WGM12);
-		
-		
-		
-		//Comparison Register to 1000 cycles for 1 ms
-		OCR1A = 0x03e8;
-		
-		//Set inital Value of the timer Counter to 0x0000
-		TCNT1 = 0x0000;
-		
-		//Enable the output compare interrupt enable
-		TIMSK1 = TIMSK1|0x02;
-		
-		//Clear the timer interrupt flag and begin timer
-		TIFR1 = (1<<OCF1A);
-		
-		//Poll the timer to determine when the timer has reached 1ms
-		//Timer is set for 1 ms, so it will be in while for tim X 1ms.
-		while(i<tim){
-			if((TIFR1 & 0x02)==0x02){  // sees if the 0CF1A flag is up
-				
-				TIFR1 =(1<<OCF1A);
-				i++;
-			}
-		}
-		return;
+void serialWrite(char c[]){
+	for(uint8_t i=0;i<strlen(c);i++){							//send messages
+		appendSerial(c[i]);
 	}
+	if(UCSR1A&(1<<UDRE1)){										//make the tx ready to transfer data again
+		UDR1 =0;
+	}
+}
