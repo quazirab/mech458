@@ -112,7 +112,8 @@ int main(){
 			if(stopper<0)stopper=0;
 		}//if
 		if(stopper>1 && stepper_flag==0){						//stops a bit infront of the EX, due to timer
-			TCNT2 = 0;											//Initialize timer0
+			TCNT2 = 0;								//Initialize timer2
+			beltStopper_overflow=0;
 			if(beltStopper_overflow>=1){						//wait for .5 sec	
 				if(TCNT2>=232) PORTB=0;							//stop a bit infornt of the EX
 			}//if
