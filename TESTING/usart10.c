@@ -11,7 +11,7 @@
 
 #define F_CPU 1000000
 #define BAUD 9600
-#define BRC ((F_CPU/16/BAUD)-1)
+#define BRC (((( F_CPU / 16) + ( BAUD / 2) ) / ( BAUD )) - 1
 #define  TX_BUFFER_SIZE 128
 
 char serialBuffer[TX_BUFFER_SIZE];
@@ -47,7 +47,8 @@ void appendSerial(char c){
 }
 
 ISR(USART1_TX_vect){
-	if(serialReadPos!=serialWritePos){							//if no data to read then move data 
+	if(serialReadPos!=serialWritePos){							//if no data to read then move data
+		while (( UCSR1A & (1 << UDRE1 )) == 0) {}; 				// Do nothing until UDR is ready for more data to
 		UDR1 = serialBuffer[serialReadPos];
 		serialReadPos++;
 		
