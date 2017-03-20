@@ -15,11 +15,11 @@
 #include <avr/io.h>
 #include <util/delay_basic.h>
 #include <avr/interrupt.h>
-#include "LinkedQueue.h" 	/* This is the attached header file, which cleans things up */
+#include "LinkedQueue.h" 	/* This is the attached header file, which cleans thi*/
 
-const unsigned short Al_max = 128;
+const unsigned short Al_max = 250;
 const unsigned short Steel_max = 800;
-const unsigned short Steel_min = 600;
+const unsigned short Steel_min = 550;
 const unsigned short Black_min = 935;
 const unsigned short white_max =930;
 const unsigned short whie_min = 900;
@@ -33,14 +33,6 @@ void breakVcc(int tim);
 void setupInterrupt();
 void clockwise(int clCount);
 void cclockwise (int cclCount);
-void setup(link **h,link **t);
-void initLink(link **newLink);
-void enqueue(link **h, link **t, link **nL);
-void dequeue(link **h,link **tail, link **deQueuedLink);
-element firstValue(link **h);
-void clearQueue(link **h, link **t);
-char isEmpty(link **h);int size(link **h, link **t);
-int size(link **h, link **t);
 void stepperpos(int pos);
 void StepperHome();
 volatile int posi = 0;
@@ -74,27 +66,29 @@ volatile int coilCount = 0;									//Global variable to track which coil was la
 volatile int Status_flag = 0;								//Stepper operation only when not 0;
 volatile int stepper_flag=1;
 char step[4] = {0x36,0x2e,0x2d,0x35};						//Drives step 1&2, 2&3,3&4,4&1; dual phase full stepping
-link *newcylinder;								//cylinder pointer for the new node to be added on each input
+link *newLink;								//cylinder pointer for the new node to be added on each input
 link *tail;										//cylinder pointer for the tail of the queue
 link *head;										//cylinder pointer for the head of the queue
-link *rtncylinder;								//cylinder pointer for returning the value of the node that has been dequeued
+link *rtnLink;								//cylinder pointer for returning the value of the node that has been dequeued
 volatile uint8_t BELT_STATUS = 1;							//1-BELT MOVING, 0 FOR BELT STOP
 volatile int stepperHome = 0;
 volatile int num = 0;
+volatile int stepperPOS = 1;			//value of the stepper position - /*1-black, 2-steel,3-white,4-alu*/
 volatile unsigned char ADClowerbit;
 volatile unsigned char ADChigherbit;
 
-//volatile uint8_t pos = 0;								//value of the stepper position - 1 - white, 2 - black, 3 - steel , 4 - alu
+						
 
 
-int main(){
-
+/* main routine */
+int main(){	
 	DDRB = 0x8F; 	//SET PORT B LOWER 4 BITS TO OUTPUT, WITH PB4,PB5,PB6 TO INPUT, AND PB7 TO OUTPUT
 	DDRC = 0xFF;	//SET ALL OF THE PORT C TO OUTPUT BITS
 	DDRD = 0xF0;	//SET ALL OF THE PORT D TO OUTPUT BITS
 	DDRF = 0x00;	//SET ALL OF PORT F TO INPUT BITS
-	
-	
+
+	rtnLink = NULL;
+	newLink = NULL;
 	cli();				//Disable Global interrupts
 	setupPWM();			//Run the PWM setup Function below
 	setupADC();			//Run the ADC Setup Function below
@@ -105,71 +99,79 @@ int main(){
 	PORTB = dcDrive[1];
 	
 	setup(&head,&tail);
-	newcylinder =NULL;
-	rtncylinder=NULL;
-	while(1){
 	
-	if(Status_flag>0){
+	while(1){
+		
+		if(Status_flag>0){
 			stepper_flag =0;
- 			initLink(&newcylinder);							//Initialize the newcylinder
-// 			/*1-black, 2-steel,3-white,4-alu*/
-// 			if (lowVal2<Al_max){							//aluminum
-// 				newcylinder->e.itemCode=4;
-// 			}//if
-// 			else if (lowVal2>Steel_min && lowVal2<Steel_max){//STEEL
-// 				newcylinder->e.itemCode=2;
-// 			}//if
-// 			else if (lowVal2>Black_min){					//BLACK
-// 				newcylinder->e.itemCode=1;
-// 			}//if
-// 			else if (lowVal2<white_max && lowVal2>whie_min){//WHITE
-// 				newcylinder->e.itemCode=3;
-// 			}//if
-// 			else newcylinder->e.itemCode=5;
+			initLink(&newLink);							//Initialize the newLink
+			/*1-black, 2-steel,3-white,4-alu*/
+						if (lowVal2<Al_max){							//aluminum
+			 				newLink->e.itemCode=4;
+			 			}//if
+			// 			else if (lowVal2>Steel_min && lowVal2<Steel_max){//STEEL
+			// 				newLink->e.itemCode=2;
+			// 			}//if
+			// 			else if (lowVal2>Black_min){					//BLACK
+			// 				newLink->e.itemCode=1;
+			// 			}//if
+			// 			else if (lowVal2<white_max && lowVal2>whie_min){//WHITE
+			// 				newLink->e.itemCode=3;
+			// 			}//if
+			// 			else newLink->e.itemCode=5;
 			
-			newcylinder->e.itemCode=4;
-			enqueue(&head,&tail,&newcylinder);				//enqueues the new cylinder
+			newLink->e.itemCode=4;
+			enqueue(&head,&tail,&newLink);				//enqueues the new cylinder
 			/*PORTC|=(head->e.itemCode);*/
-			free(newcylinder);
-									
-			dequeue(&head,&tail,&rtncylinder);
-			PORTC=rtncylinder->e.itemCode;
-			stepperpos(4);
+			free(newLink);
+			
+			dequeue(&head,&tail,&rtnLink);
+			PORTC=rtnLink->e.itemCode;
+			stepperpos(rtnLink->e.itemCode);
 			stepper_flag=1;
 			PORTB = dcDrive[1];
-			free(rtncylinder);
+			free(rtnLink);
 			Status_flag--;
 			if(Status_flag<0) Status_flag=0;
-												
-		}//if	 
+			
+		}//if
 	}//while
 	return(0);
+
 }/* main */
+
 
 
 /**************************************************************************************/
 /*****************************Stepper Motor Clockwise**********************************/
 /**************************************************************************************/
-void stepperpos(int pos){
-		clockwise(50*pos);
+void stepperpos(int newpos){
+		unsigned int poscal = newpos-stepperPOS;		//calculate
+	if (poscal<=4-(poscal)) clockwise(poscal);			//
+	else clockwise(4-poscal);
+	stepperPOS=newpos;
 }
 
 void StepperHome(){
-	while (!stepperHome) 
-	{
-		PORTA = step[coilCount];
-		timerCount(20);
-		coilCount++;
+	int delay = 20;
+	while (!stepperHome)
+	{	
+		coilCount++;					//powers the next coil (clockwise) from the last one that fired
 		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
+		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
+		timerCount(delay);
+		if(coilCount<=13) delay=-1;
+		if(delay < 13) delay =13;
+		//countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 	}
 }
 
 /**************************************************************************************/
 /*****************************Stepper Motor Clockwise**********************************/
 /**************************************************************************************/
-void clockwise(int clCount){
+void clockwise(int pos){
 	int delay = 20;
-	
+	int clCount = pos*50;
 	for(int i=0;i<clCount;i++){
 		coilCount++;					//powers the next coil (clockwise) from the last one that fired
 		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
@@ -178,16 +180,17 @@ void clockwise(int clCount){
 		if(i <= 13) delay -= 1;
 		if(clCount -i <= 13) delay +=1;
 		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
-		if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
+		//if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
-		
+	
 }
 
 /**************************************************************************************/
 /*****************************Stepper Motor Counter Clockwise**************************/
 /**************************************************************************************/
-void cclockwise (int cclCount){
+void cclockwise (int pos){
 	int delay = 20;
+	int cclCount = pos*50;
 	for(int i=0;i<cclCount;i++){
 		coilCount--;					//powers the previous coil (anti-clockwise) from the last one that fired
 		if (coilCount<0) coilCount=3;	//if the coil moves a full 4 steps, move it back to the fourth coil in order to continue reversing (anti-clockwise)
@@ -196,7 +199,7 @@ void cclockwise (int cclCount){
 		if(i <= 13) delay -= 1;
 		if(cclCount -i <= 13) delay +=1;
 		countStep--;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
-		if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
+		//if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
 }
 
@@ -213,7 +216,7 @@ void setupInterrupt(){
 }//IN - FOR METAL DETECTION
 
 /*Interrupt 0: OI sensor on PD0*/
-ISR(INT0_vect){											//OI 
+ISR(INT0_vect){											//OI
 	/*Initialize new list element when the first optical sensor is triggered.*/
 }//ISR
 
@@ -222,14 +225,14 @@ ISR(INT1_vect){
 	/*ADC VALUE*/
 	lowVal2=0x03FF;							//intial highest vale to 1023
 	ADCSRA |= (1<<ADSC);					//start conversion, goes to ADC
-		
+	
 }//ISR
 /*Interrupt 1: EX on PD1*/
 ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
 	//stops the belt if the
 	if(stepper_flag==0) {
-		PORTB =0;}
+	PORTB =0;}
 
 }
 /*Interrupt 3: Hall Effect on PD3*/
@@ -266,27 +269,34 @@ void setupADC(){
 	ADMUX = (1<< REFS0)|(1<<MUX0);						// Left adjust, and use VCC as top reference
 	ADCSRA=(1<<ADEN)|(1<<ADIE);							//Set the values of the ADC Enable and ADC Interrupt Enable bits to 1
 	DIDR0 = (1<<ADC1D);									//Turns off the digital input buffer for ADC1 on PF1
-}/*setupADC*/
+	}/*setupADC*/
 
-ISR(ADC_vect){
-	lowVal1 = ADC;										//puts the full 10 bit value to lowVal1
-	if(lowVal2>lowVal1){								//if lowVal2 is greater than lowVal1
-		lowVal2=lowVal1;								//lowVal2 is equal to lowVal1
-		
-	}//if
-	if((PIND & 0x02)==0x02) {
-		ADCSRA |= (1<<ADSC);			//conversion continues till state ==0;
+	ISR(ADC_vect){
+		lowVal1 = ADC;										//puts the full 10 bit value to lowVal1
+		if(lowVal2>lowVal1){								//if lowVal2 is greater than lowVal1
+			lowVal2=lowVal1;								//lowVal2 is equal to lowVal1
+			
+		}//if
+		if((PIND & 0x02)==0x02) {
+			ADCSRA |= (1<<ADSC);			//conversion continues till state ==0;
 		}
-	else{
+		else{
 			Status_flag ++;									// 1 - turns on stepper
 			return;
-	}//else
-}//ISR
+		}//else
+	}//ISR
+
 
 
 /**************************************************************************************/
-/*************************************LinkList*********************************************/
+/***************************** SUBROUTINES ********************************************/
 /**************************************************************************************/
+
+
+
+
+
+
 
 /**************************************************************************************
 * DESC: initializes the linked queue to 'NULL' status
@@ -297,131 +307,148 @@ void setup(link **h,link **t){
 	*h = NULL;		/* Point the head to NOTHING (NULL) */
 	*t = NULL;		/* Point the tail to NOTHING (NULL) */
 	return;
-	}/*setup*/
+}/*setup*/
 
 
 
 
 /**************************************************************************************
-	* DESC: This initializes a link and returns the pointer to the new link or NULL if error
-	* INPUT: the head and tail pointers by reference
-	*/
+* DESC: This initializes a link and returns the pointer to the new link or NULL if error 
+* INPUT: the head and tail pointers by reference
+*/
 void initLink(link **newLink){
-		//link *l;
-		*newLink = malloc(sizeof(link));
-		(*newLink)->next = NULL;
-		return;
-		}/*initLink*/
+	//link *l;
+	*newLink = malloc(sizeof(link));
+	(*newLink)->next = NULL;
+	return;
+}/*initLink*/
 
 
 
 
 /****************************************************************************************
-		*  DESC: Accepts as input a new link by reference, and assigns the head and tail
-		*  of the queue accordingly
-		*  INPUT: the head and tail pointers, and a pointer to the new link that was created
-		*/
-		/* will put an item at the tail of the queue */
+*  DESC: Accepts as input a new link by reference, and assigns the head and tail		
+*  of the queue accordingly				
+*  INPUT: the head and tail pointers, and a pointer to the new link that was created 
+*/
+/* will put an item at the tail of the queue */
 void enqueue(link **h, link **t, link **nL){
 
-			if (*t != NULL){
-				/* Not an empty queue */
-				(*t)->next = *nL;
-				*t = *nL; //(*t)->next;
-				}/*if*/
-				else{
-					/* It's an empty Queue */
-					//(*h)->next = *nL;
-					//should be this
-					*h = *nL;
-					*t = *nL;
-					}/* else */
-					return;
-					}/*enqueue*/
+	if (*t != NULL){
+		/* Not an empty queue */
+		(*t)->next = *nL;
+		*t = *nL; //(*t)->next;
+	}/*if*/
+	else{
+		/* It's an empty Queue */
+		//(*h)->next = *nL;
+		//should be this
+		*h = *nL;
+		*t = *nL;
+	}/* else */
+	return;
+}/*enqueue*/
 
 
 
 
 /**************************************************************************************
 * DESC : Removes the link from the head of the list and assigns it to deQueuedLink
-* INPUT: The head and tail pointers, and a ptr 'deQueuedLink'
+* INPUT: The head and tail pointers, and a ptr 'deQueuedLink' 
 * 		 which the removed link will be assigned to
-
+*/
 /* This will remove the link and element within the link from the head of the queue */
 void dequeue(link **h,link **t, link **deQueuedLink){
-						/* ENTER YOUR CODE HERE */
-						*deQueuedLink = *h;	// Will set to NULL if Head points to NULL
-						/* Ensure it is not an empty queue */
-						if (*h != NULL){
-							*h = (*h)->next;	//Set *h to be the next node in the linked list
-							}/*if*/
-						if(*h == NULL)*t=NULL;
-						
-							return;
-							}/*dequeue*/
+	/* ENTER YOUR CODE HERE */
+	*deQueuedLink = *h;	// Will set to NULL if Head points to NULL
+	/* Ensure it is not an empty queue */
+	if (*h != NULL){
+		*h = (*h)->next;
+	}/*if*/
+	else *t=NULL;
+	return;
+}/*dequeue*/
 
 
 
+
+/**************************************************************************************
+* DESC: Peeks at the first element in the list
+* INPUT: The head pointer
+* RETURNS: The element contained within the queue
+*/
+/* This simply allows you to peek at the head element of the queue and returns a NULL pointer if empty */
 element firstValue(link **h){
 	return((*h)->e);
-		}/*firstValue*/
+}/*firstValue*/
 
 
 
 
 
-				
+/**************************************************************************************
+* DESC: deallocates (frees) all the memory consumed by the Queue
+* INPUT: the pointers to the head and the tail
+*/
+/* This clears the queue */
 void clearQueue(link **h, link **t){
 
-			link *temp;
+	link *temp;
 
-			while (*h != NULL){
+	while (*h != NULL){
 		temp = *h;
-			*h=(*h)->next;
-			free(temp);
-		}/*while*/
-										
-		/* Last but not least set the tail to NULL */
-		*t = NULL;
+		*h=(*h)->next;
+		free(temp);
+	}/*while*/
+	
+	/* Last but not least set the tail to NULL */
+	*t = NULL;		
 
-		return;
-		}/*clearQueue*/
-
-
-
-
-
-		char isEmpty(link **h){
-		/* ENTER YOUR CODE HERE */
-		return(*h == NULL);
-			}/*isEmpty*/
+	return;
+}/*clearQueue*/
 
 
 
 
 
-											/**************************************************************************************
-											* DESC: Obtains the number of links in the queue
-											* INPUT: The head and tail pointer
-											* RETURNS: An integer with the number of links in the queue
-											*/
-											/* returns the size of the queue*/
-											int size(link **h, link **t){
+/**************************************************************************************
+* DESC: Checks to see whether the queue is empty or not
+* INPUT: The head pointer
+* RETURNS: 1:if the queue is empty, and 0:if the queue is NOT empty
+*/
+/* Check to see if the queue is empty */
+char isEmpty(link **h){
+	/* ENTER YOUR CODE HERE */
+	return(*h == NULL);
+}/*isEmpty*/
 
-												link 	*temp;			/* will store the link while traversing the queue */
-												int 	numElements;
 
-												numElements = 0;
 
-												temp = *h;			/* point to the first item in the list */
 
-												while(temp != NULL){
-													numElements++;
-													temp = temp->next;
-													}/*while*/
-													
+
+/**************************************************************************************
+* DESC: Obtains the number of links in the queue
+* INPUT: The head and tail pointer
+* RETURNS: An integer with the number of links in the queue
+*/
+/* returns the size of the queue*/
+int size(link **h, link **t){
+
+	link 	*temp;			/* will store the link while traversing the queue */
+	int 	numElements;
+
+	numElements = 0;
+
+	temp = *h;			/* point to the first item in the list */
+
+	while(temp != NULL){
+		numElements++;
+		temp = temp->next;
+	}/*while*/
+	
 	return(numElements);
 }/*size*/
+
 
 /**************************************************************************************/
 /*************************************Timer********************************************/
