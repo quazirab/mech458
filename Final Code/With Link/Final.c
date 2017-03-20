@@ -35,7 +35,8 @@ void clockwise(int clCount);
 void cclockwise (int cclCount);
 void stepperpos(int pos);
 void StepperHome();
-volatile int posi = 0;
+void timer2Setup();
+
 
 
 /*Usage of pins in this program*/
@@ -61,22 +62,24 @@ volatile int posi = 0;
 const char dcDrive[4] = {0x00,0x04,0x08,0x0c};				//Array containing the DC motor driver truth table
 volatile unsigned short lowVal1;
 volatile unsigned short lowVal2;							//short is 16 bit(2byte)
-volatile int countStep=0;									//Global variable to track the location of the stepper
-volatile int coilCount = 0;									//Global variable to track which coil was last used
-volatile int Status_flag = 0;								//Stepper operation only when not 0;
-volatile int stepper_flag=1;
+volatile uint8_t countStep=0;									//Global variable to track the location of the stepper
+volatile uint8_t coilCount = 0;									//Global variable to track which coil was last used
+volatile uint8_t Status_flag = 0;								//Stepper operation only when not 0;
+volatile uint8_t stepper_flag=1;
 char step[4] = {0x36,0x2e,0x2d,0x35};						//Drives step 1&2, 2&3,3&4,4&1; dual phase full stepping
 link *newLink;								//cylinder pointer for the new node to be added on each input
 link *tail;										//cylinder pointer for the tail of the queue
 link *head;										//cylinder pointer for the head of the queue
 link *rtnLink;								//cylinder pointer for returning the value of the node that has been dequeued
 volatile uint8_t BELT_STATUS = 1;							//1-BELT MOVING, 0 FOR BELT STOP
-volatile int stepperHome = 0;
-volatile int num = 0;
-volatile int stepperPOS = 1;			//value of the stepper position - /*1-black, 2-steel,3-white,4-alu*/
+volatile uint8_t stepperHome = 0;
+volatile uint8_t num = 0;
+volatile uint8_t stepperPOS = 1;			//value of the stepper position - /*1-black, 2-steel,3-white,4-alu*/
 volatile unsigned char ADClowerbit;
 volatile unsigned char ADChigherbit;
-
+volatile uint8_t stopper = 0;				//for knowing how many parts have crossed EX
+volatile uint8_t beltStopper_overflow;		//Calculating overflow for timer if the EX
+volatile int posi = 0;
 						
 
 
@@ -94,6 +97,7 @@ int main(){
 	setupADC();			//Run the ADC Setup Function below
 	
 	setupInterrupt();	//Sets up all the interrupts
+	timer2Setup();		//Sets up timer 2 for EX and beltstop calibration
 	sei();				//Enable global interrupts
 	StepperHome();		//brings the stepper to position
 	PORTB = dcDrive[1];
@@ -101,6 +105,20 @@ int main(){
 	setup(&head,&tail);
 	
 	while(1){
+		
+		if (stopper==1 && stepper_flag==0){
+			PORTB=0;											//stops a bit infront of the EX, due to acceleration
+			stopper--;
+			if(stopper<0)stopper=0;
+		}//if
+		if(stopper>1 && stepper_flag==0){						//stops a bit infront of the EX, due to timer
+			TCNT2 = 0;											//Initialize timer0
+			if(beltStopper_overflow>=1){						//wait for .5 sec	
+				if(TCNT2>=232) PORTB=0;							//stop a bit infornt of the EX
+			}//if
+			stopper--;
+			if(stopper<0)stopper=0;
+		}//if
 		
 		if(Status_flag>0){
 			stepper_flag =0;
@@ -127,6 +145,7 @@ int main(){
 			
 			dequeue(&head,&tail,&rtnLink);
 			PORTC=rtnLink->e.itemCode;
+			stepper_flag=0;
 			stepperpos(rtnLink->e.itemCode);
 			stepper_flag=1;
 			PORTB = dcDrive[1];
@@ -148,7 +167,7 @@ int main(){
 void stepperpos(int newpos){
 		unsigned int poscal = newpos-stepperPOS;		//calculate
 	if (poscal<=4-(poscal)) clockwise(poscal);			//
-	else clockwise(4-poscal);
+	else cclockwise(4-poscal);
 	stepperPOS=newpos;
 }
 
@@ -231,8 +250,12 @@ ISR(INT1_vect){
 ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
 	//stops the belt if the
-	if(stepper_flag==0) {
-	PORTB =0;}
+	stopper++;
+	if (beltStopper_overflow>=11){			//if the difference between 2 consecutive cylinder is more than 3 secs,
+		stopper=1;							//motor speed will be max and the stopper will stop infornt of EX, no delay required
+	}
+// 	if(stepper_flag==0) {
+// 	PORTB =0;}
 
 }
 /*Interrupt 3: Hall Effect on PD3*/
@@ -487,3 +510,21 @@ void timerCount(int tim){
 	}//while
 	return;
 }//timerCount
+
+
+/**************************************************************************************/
+/*************************Timer for EX and Belt Calibration****************************/
+/**************************************************************************************/
+
+void timer2Setup(){
+	// set up timer with prescaler = 1024
+	TCCR2B |= (1 << CS22)|(1 << CS20);
+	
+	// enable overflow interrupt
+	TIMSK2 |= (1 << TOIE2);	
+}
+
+ISR(TIMER2_OVF_vect){
+	beltStopper_overflow++;		//overflows everytime it TCNT hits 256;
+}
+	
