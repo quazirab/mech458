@@ -63,7 +63,7 @@ const char dcDrive[4] = {0x00,0x04,0x08,0x0c};				//Array containing the DC moto
 volatile unsigned short lowVal1;
 volatile unsigned short lowVal2;							//short is 16 bit(2byte)
 volatile uint8_t countStep=0;									//Global variable to track the location of the stepper
-volatile uint8_t coilCount = 0;									//Global variable to track which coil was last used
+volatile int8_t coilCount = 0;									//Global variable to track which coil was last used
 volatile uint8_t Status_flag = 0;								//Stepper operation only when not 0;
 volatile uint8_t stepper_flag=1;
 char step[4] = {0x36,0x2e,0x2d,0x35};						//Drives step 1&2, 2&3,3&4,4&1; dual phase full stepping
