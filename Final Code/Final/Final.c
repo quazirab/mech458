@@ -78,7 +78,7 @@ volatile uint8_t stepperPOS = 1;			//value of the stepper position - /*1-black, 
 volatile unsigned char ADClowerbit;
 volatile unsigned char ADChigherbit;
 volatile uint8_t stopper = 0;				//for knowing how many parts have crossed EX
-volatile uint8_t beltStopper_overflow;		//Calculating overflow for timer if the EX
+volatile uint8_t timer2overflow;			//Calculating overflow for displaying
 volatile int posi = 0;
 volatile uint8_t EX = 0;
 						
@@ -90,6 +90,7 @@ int main(){
 	DDRC = 0xFF;	//SET ALL OF THE PORT C TO OUTPUT BITS
 	DDRD = 0xF0;	//SET ALL OF THE PORT D TO OUTPUT BITS
 	DDRF = 0x00;	//SET ALL OF PORT F TO INPUT BITS
+	DDRA = 0xFF;	//SET ALL OF THE PORT C TO OUTPUT BITS for Stepper
 
 	rtnLink = NULL;
 	newLink = NULL;
@@ -101,6 +102,7 @@ int main(){
 	timer2Setup();		//Sets up timer 2 for EX and beltstop calibration
 	sei();				//Enable global interrupts
 	StepperHome();		//brings the stepper to position
+	timer2Setup();		//for displaying LEDS
 	PORTB = dcDrive[1];
 	
 	setup(&head,&tail);
@@ -497,9 +499,14 @@ void timer2Setup(){
 	
 	// enable overflow interrupt
 	TIMSK2 |= (1 << TOIE2);	
+	TCNT2 = 46; 			//1 sec delay for 4 overflows
 }
 
 ISR(TIMER2_OVF_vect){
-	beltStopper_overflow++;		//overflows everytime it TCNT hits 256;
+	timer2overflow++;		//overflows everytime it TCNT hits 256;
+	if(timer2overflow >=4){		//every 1 secs
+		PORTC = 0xFF;		//
+		TCNT2 = 46;		//start new timer
+	}
 }
 	
