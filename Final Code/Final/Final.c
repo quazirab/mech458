@@ -102,9 +102,10 @@ int main(){
 	
 	setupInterrupt();	//Sets up all the interrupts
 	timer2Setup();		//Sets up timer 2 for EX and beltstop calibration
+	timer2Setup();		//for displaying LEDS
 	sei();				//Enable global interrupts
 	StepperHome();		//brings the stepper to position
-	timer2Setup();		//for displaying LEDS
+	
 	PORTB = dcDrive[1];
 	
 	setup(&head,&tail);
