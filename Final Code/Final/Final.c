@@ -41,46 +41,48 @@ void timer2Setup();
 
 /*Usage of pins in this program*/
 //PORTC for LEDs
-//PF1 = RL 
-//PB7 = PWM 
 //PB5 for Direction Switch
 //PB0 = EB
 //PB1 = EA
 //PB2 = IB
 //PB3 = IA
-//PB0 = L4
-//PB1 = L4
-//PB2 = E2
-//PB3 = L2
-//PB4 = L1
-//PB5 = E1
+//PB7 = PWM 
+//PA0 = L4
+//PA1 = L3
+//PA2 = E2
+//PA3 = L2
+//PA4 = L1
+//PA5 = E1
 //PD0 = OI
 //PD1 = IN
 //PD2 = OR
 //PD3 = EX
+//PF1 = RL
 
 const char dcDrive[4] = {0x00,0x04,0x08,0x0c};				//Array containing the DC motor driver truth table
 volatile unsigned short lowVal1;
 volatile unsigned short lowVal2;							//short is 16 bit(2byte)
-volatile uint8_t countStep=0;									//Global variable to track the location of the stepper
-volatile int8_t coilCount = 0;									//Global variable to track which coil was last used
-volatile uint8_t Status_flag = 0;								//Stepper operation only when not 0;
-volatile uint8_t stepper_flag=1;
+volatile uint8_t countStep=0;								//Global variable to track the location of the stepper
+volatile int8_t coilCount = 0;								//Global variable to track which coil was last used
+volatile uint8_t Status_flag = 0;							//Stepper operation only when not 0;
+volatile uint8_t stepper_flag;								//1-Stepper in progress and 0-Stepper done to going to the positon
 char step[4] = {0x36,0x2e,0x2d,0x35};						//Drives step 1&2, 2&3,3&4,4&1; dual phase full stepping
-link *newLink;								//cylinder pointer for the new node to be added on each input
-link *tail;										//cylinder pointer for the tail of the queue
-link *head;										//cylinder pointer for the head of the queue
-link *rtnLink;								//cylinder pointer for returning the value of the node that has been dequeued
+link *newLink;												//cylinder pointer for the new node to be added on each input
+link *tail;													//cylinder pointer for the tail of the queue
+link *head;													//cylinder pointer for the head of the queue
+link *rtnLink;												//cylinder pointer for returning the value of the node that has been dequeued
 volatile uint8_t BELT_STATUS = 1;							//1-BELT MOVING, 0 FOR BELT STOP
-volatile uint8_t stepperHome = 0;
-volatile uint8_t num = 0;
-volatile uint8_t stepperPOS = 1;			//value of the stepper position - /*1-black, 2-steel,3-white,4-alu*/
+volatile uint8_t stepperHome = 0;							//Hall effect sets to 1 for stepper position
+volatile uint8_t stepperPOS = 1;							//value of the stepper position - /*1-black, 2-steel,3-white,4-alu*/
 volatile unsigned char ADClowerbit;
 volatile unsigned char ADChigherbit;
-volatile uint8_t stopper = 0;				//for knowing how many parts have crossed EX
-volatile uint8_t timer2overflow;			//Calculating overflow for displaying
-volatile int posi = 0;
-volatile uint8_t EX = 0;
+volatile uint8_t stopper = 0;								//for knowing how many parts have crossed EX
+volatile uint8_t timer2overflow;							//Calculating overflow for displaying
+volatile uint8_t alu;										//number of alu for displaying
+volatile uint8_t steel;										//number of steel for displaying
+volatile uint8_t black;										//number of black for displaying
+volatile uint8_t white;										//number of white for displaying
+volatile uint8_t displayCounter=1;							//counter for showing dispaying position -  /*1-black, 2-steel,3-white,4-alu*/
 						
 
 
@@ -116,7 +118,7 @@ int main(){
 			
 			stepper_flag = 1;				//stepper in progress
 			PORTC =stepper_flag;
-			clockwise();
+			clockwise(5);
 			stepper_flag=0;					//stepper done working
 			PORTC =stepper_flag;
 			
@@ -130,10 +132,20 @@ int main(){
 
 }/* main */
 
+/**************************************************************************************/
+/*****************************Stepper Motor Home**********************************/
+/**************************************************************************************/
 
+void stepperpos(int pos){
+	int steppercalclock = abs(pos-stepperPOS);
+	int steppercalcclock = 4-steppercalclock;
+	if (steppercalclock<steppercalcclock) clockwise(steppercalclock);
+	else cclockwise(steppercalcclock);
+	stepperPOS = pos;
+}
 
 /**************************************************************************************/
-/*****************************Stepper Motor Clockwise**********************************/
+/*****************************Stepper Motor Home**********************************/
 /**************************************************************************************/
 
 
@@ -267,21 +279,26 @@ void setupADC(){
 			/*1-black, 2-steel,3-white,4-alu*/
 					if (lowVal2<Al_max){							//aluminum
 							newLink->e.itemCode=4;
+							alu++;									//for display
 						}//if
 		 			else if (lowVal2>Steel_min && lowVal2<Steel_max){//STEEL
-						newLink->e.itemCode=2;
+							newLink->e.itemCode=2;
+							steel++;								//for display
 					}//if
 					else if (lowVal2>Black_min){					//BLACK
-						newLink->e.itemCode=1;
+							newLink->e.itemCode=1;
+							black++;								//for display
 						}//if
 					else if (lowVal2<white_max && lowVal2>whie_min){//WHITE
-							newLink->e.itemCode=3;
+								newLink->e.itemCode=3;
+								white++;							//white
 						}//if
-					else newLink->e.itemCode=5;
+					else newLink->e.itemCode=4;
 			
 		
 			enqueue(&head,&tail,&newLink);				//enqueues the new cylinder
 			Status_flag++;
+			free(newLink);
 			return;
 		}//else
 	}//ISR
@@ -501,12 +518,32 @@ void timer2Setup(){
 	TIMSK2 |= (1 << TOIE2);	
 	TCNT2 = 46; 			//1 sec delay for 4 overflows
 }
-
+/*1-black, 2-steel,3-white,4-alu*/
 ISR(TIMER2_OVF_vect){
 	timer2overflow++;		//overflows everytime it TCNT hits 256;
 	if(timer2overflow >=4){		//every 1 secs
-		PORTC = 0xFF;		//
+		if(displayCounter ==1){	//for black
+			PORTC = black;
+			PORTC|=0001<<4;
+			displayCounter++;
+			}//if
+			if(displayCounter ==2){	//for steel
+				PORTC = steel;
+				PORTC|=0010<<4;
+				displayCounter++;
+			}//if
+			if(displayCounter ==3){	//for white
+				PORTC = white;
+				PORTC|=0100<<4;
+				displayCounter++;
+			}//if
+			if(displayCounter ==4){	//for alu
+				PORTC = alu;
+				PORTC|=1000<<4;
+				displayCounter=1;
+			}//if
 		TCNT2 = 46;		//start new timer
-	}
-}
+		timer2overflow=0;
+	}//if
+}//isr
 	
