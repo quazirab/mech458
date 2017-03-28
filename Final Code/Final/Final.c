@@ -17,13 +17,13 @@
 #include <avr/interrupt.h>
 #include "LinkedQueue.h" 	/* This is the attached header file, which cleans thi*/
 
-const unsigned short Al_max = 250;
-const unsigned short Steel_max = 800;
+const unsigned short Al_max = 350;
+const unsigned short Steel_max = 850;
 const unsigned short Steel_min = 550;
 const unsigned short Black_min = 935;
 const unsigned short white_max =930;
-const unsigned short whie_min = 900;
-const uint8_t pwm = 160;
+const unsigned short white_min = 900;
+const uint8_t pwm = 128;
 
 
 void setupADC();
@@ -82,6 +82,7 @@ volatile uint8_t steel;										//number of steel for displaying
 volatile uint8_t black;										//number of black for displaying
 volatile uint8_t white;										//number of white for displaying
 volatile uint8_t displayCounter=1;							//counter for showing dispaying position -  /*1-black, 2-steel,3-white,4-alu*/
+volatile int8_t EX;											//for counting how many have crossed EX
 						
 
 
@@ -117,14 +118,25 @@ int main(){
 			
 		
 	
-			clockwise(rtnLink->e.itemCode);
+			/*clockwise(rtnLink->e.itemCode);*/
+			stepperpos(rtnLink->e.itemCode);
+			PORTC = rtnLink->e.itemCode;
+			timerCount(20);
 			stepper_flag=0;					//stepper done working
-		
-			PORTB= dcDrive[1];
-			/*timerCount(100);*/			
+			
+			if (EX ==2){					//if two cylinder is in EX
+				PORTB = dcDrive[1];			
+				timerCount(20);
+				PORTB = dcDrive[0];
+				timerCount(100);
+			}
+			
+			else PORTB= dcDrive[1];
+			
+			timerCount(100);		
 			free(rtnLink);
 			Status_flag--;
-			
+			EX--;
 			}
 	}//while
 	return(0);
@@ -136,11 +148,19 @@ int main(){
 /**************************************************************************************/
 
 void stepperpos(int pos){
-	int steppercalclock = abs(pos-stepperPOS);
+	/*int steppercalclock = abs(pos-stepperPOS);
 	int steppercalcclock = 4-steppercalclock;
 	if (steppercalclock<steppercalcclock) clockwise(steppercalclock);
 	else cclockwise(steppercalcclock);
-	stepperPOS = pos;
+	stepperPOS = pos;*/
+	
+	int movepos = pos - stepperPOS;
+	if(movepos == 3) movepos = -1;
+	if(movepos != 0){
+		if(movepos > 0) cclockwise(movepos);
+		if(movepos < 0) clockwise(abs(movepos));
+	}
+	
 }
 
 
@@ -224,13 +244,14 @@ ISR(INT1_vect){
 	ADCSRA |= (1<<ADSC);					//start conversion, goes to ADC
 	
 }//ISR
-/*Interrupt 1: EX on PD1*/
+/*Interrupt 1: EX on PD2*/
 ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
 	//stops the belt if the
 	if(stepper_flag==1) {
 		PORTB=0;
 		}
+	EX++;
 		
 }
 /*Interrupt 3: Hall Effect on PD3*/
@@ -273,31 +294,34 @@ void setupADC(){
 		if((PIND & 0x02)==0x02) {
 			ADCSRA |= (1<<ADSC);			//conversion continues till state ==0;
 		}
-		else{
-			initLink(&newLink);							//Initialize the newLink
-			
-			/*1-black, 2-steel,3-white,4-alu*/
-					if (lowVal2<Al_max){							//aluminum
-							newLink->e.itemCode=4;
-							alu++;
-						}//if
-		 			else if (lowVal2>Steel_min && lowVal2<Steel_max){//STEEL
-						newLink->e.itemCode=2;
-						steel++;
-					}//if
-					else if (lowVal2>Black_min){					//BLACK
-						newLink->e.itemCode=1;
-						black++;
-						}//if
-					else if (lowVal2<white_max && lowVal2>whie_min  ){//WHITE
-							newLink->e.itemCode=3;
-							white++;
-						}//if
-					else newLink->e.itemCode=5;
 		
-			enqueue(&head,&tail,&newLink);				//enqueues the new cylinder
-			Status_flag++;
-			return;
+			else{
+				initLink(&newLink);							//Initialize the newLink
+			
+				/*1-black, 2-steel,3-white,4-alu*/
+						if (lowVal2<Al_max){							//aluminum
+								newLink->e.itemCode=4;
+								alu++;
+							}//if
+		 				else if (lowVal2>Steel_min && lowVal2<Steel_max){//STEEL
+							newLink->e.itemCode=2;
+							steel++;
+						}//if
+						else if (lowVal2>Black_min){					//BLACK
+							newLink->e.itemCode=1;
+							black++;
+							}//if
+						else if (lowVal2<white_max && lowVal2>white_min  ){//WHITE
+								newLink->e.itemCode=3;
+								white++;
+							}//if
+						else PORTC =0xFF;
+// 						PORTC = lowVal2&0xFF;
+// 						PORTD = (lowVal2>>8)<<5;
+						enqueue(&head,&tail,&newLink);				//enqueues the new cylinder
+						Status_flag++;
+						
+						return;
 		}//else
 	}//ISR
 
@@ -517,31 +541,32 @@ void timer2Setup(){
 }
 
 ISR(TIMER2_OVF_vect){
-	timer2overflow++;		//overflows everytime it TCNT hits 256;
-	if(timer2overflow >=4){		//every 1 secs
-		
-		if(displayCounter ==1){	//for black
-			PORTC = black;
-			PORTC|=(0b0001<<4);
-			displayCounter++;
-		}//if
-		else if(displayCounter ==2){	//for steel
-			PORTC = steel;
-			PORTC|=(0b0010<<4);
-			displayCounter++;
-		}//if
-		else if(displayCounter ==3){	//for white
-			PORTC = white;
-			PORTC|=(0b0100<<4);
-			displayCounter++;
-		}//if
-		else if(displayCounter ==4){	//for alu
-			PORTC = alu;
-			PORTC|=(0b1000<<4);
-			displayCounter=1;
-		}//if
-		
-		TCNT2 = 46;		//start new timer
-		timer2overflow=0;
-	}//if
+// 	timer2overflow++;		//overflows everytime it TCNT hits 256;
+// 	if(timer2overflow >=4){		//every 1 secs
+// 		
+// 		if(displayCounter ==1){	//for black
+// 			PORTC = black;
+// 			PORTC|=(0b0001<<4);
+// 			displayCounter++;
+// 		}//if
+// 		else if(displayCounter ==2){	//for steel
+// 			PORTC = steel;
+// 			PORTC|=(0b0010<<4);
+// 			displayCounter++;
+// 		}//if
+// 		else if(displayCounter ==3){	//for white
+// 			PORTC = white;
+// 			PORTC|=(0b0100<<4);
+// 			displayCounter++;
+// 		}//if
+// 		else if(displayCounter ==4){	//for alu
+// 			PORTC = alu;
+// 			PORTC|=(0b1000<<4);
+// 			displayCounter=1;
+// 		}//if
+// 		
+// 		TCNT2 = 46;		//start new timer
+// 		timer2overflow=0;
+// 	}//if
 }//isr
+
