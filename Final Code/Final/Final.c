@@ -18,9 +18,9 @@
 #include "LinkedQueue.h" 	/* This is the attached header file, which cleans thi*/
 
 const unsigned short Al_max = 350;
-const unsigned short Steel_max = 850;
-const unsigned short Steel_min = 550;
-const unsigned short Black_min = 935;
+const unsigned short Steel_max = 800;
+const unsigned short Steel_min = 400;
+const unsigned short Black_min = 940;
 const unsigned short white_max =930;
 const unsigned short white_min = 900;
 const uint8_t pwm = 128;
@@ -82,7 +82,7 @@ volatile uint8_t steel;										//number of steel for displaying
 volatile uint8_t black;										//number of black for displaying
 volatile uint8_t white;										//number of white for displaying
 volatile uint8_t displayCounter=1;							//counter for showing dispaying position -  /*1-black, 2-steel,3-white,4-alu*/
-volatile int8_t EX;											//for counting how many have crossed EX
+volatile int8_t posEX=1;											//for counting how many have crossed EX
 						
 
 
@@ -110,34 +110,19 @@ int main(){
 	while(1){
 		
 		
+			
 		if(Status_flag>0) {
-			
-			dequeue(&head,&tail,&rtnLink);
-			
-			stepper_flag = 1;				//stepper in progress
-			
-		
-	
-			/*clockwise(rtnLink->e.itemCode);*/
-			stepperpos(rtnLink->e.itemCode);
-			PORTC = rtnLink->e.itemCode;
-			timerCount(20);
-			stepper_flag=0;					//stepper done working
-			
-			if (EX ==2){					//if two cylinder is in EX
-				PORTB = dcDrive[1];			
-				timerCount(20);
-				PORTB = dcDrive[0];
-				timerCount(100);
-			}
-			
-			else PORTB= dcDrive[1];
-			
-			timerCount(100);		
-			free(rtnLink);
-			Status_flag--;
-			EX--;
-			}
+					dequeue(&head,&tail,&rtnLink);
+					stepper_flag=1;
+					stepperpos(rtnLink->e.itemCode);
+					stepper_flag=0;
+					PORTB=dcDrive[1];
+					timerCount(200);
+					Status_flag--;
+				}//if
+				PORTC=num;
+				//PORTB= dcDrive[1];
+				
 	}//while
 	return(0);
 
@@ -148,19 +133,15 @@ int main(){
 /**************************************************************************************/
 
 void stepperpos(int pos){
-	/*int steppercalclock = abs(pos-stepperPOS);
-	int steppercalcclock = 4-steppercalclock;
-	if (steppercalclock<steppercalcclock) clockwise(steppercalclock);
-	else cclockwise(steppercalcclock);
-	stepperPOS = pos;*/
-	
+
 	int movepos = pos - stepperPOS;
 	if(movepos == 3) movepos = -1;
+	if(movepos == -3) movepos = 1;
 	if(movepos != 0){
 		if(movepos > 0) cclockwise(movepos);
 		if(movepos < 0) clockwise(abs(movepos));
 	}
-	
+	stepperPOS = pos;
 }
 
 
@@ -194,8 +175,8 @@ void clockwise(int pos){
 		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(i <= 13) delay -= 1;
-		if(clCount -i <= 13) delay +=1;
+		if(i <= 12) delay -= 1;
+		if(clCount -i <= 12) delay +=1;
 		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 		if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
@@ -213,8 +194,8 @@ void cclockwise (int pos){
 		if (coilCount<0) coilCount=3;	//if the coil moves a full 4 steps, move it back to the fourth coil in order to continue reversing (anti-clockwise)
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(i <= 13) delay -= 1;
-		if(cclCount -i <= 13) delay +=1;
+		if(i <= 12) delay -= 1;
+		if(cclCount -i <= 12) delay +=1;
 		countStep--;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 		if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
@@ -225,21 +206,24 @@ void cclockwise (int pos){
 /************************************Interrupt***********************************************/
 /**************************************************************************************/
 void setupInterrupt(){
-	EICRA |= _BV(ISC01);				//OI - FOR INITIATING A LINK LIST - RISING EDGE
+	EICRA |= _BV(ISC01);				//OI - FOR INITIATING A LINK LIST - FALLING EDGE
 	EICRA |= _BV(ISC10)|_BV(ISC11);		//OR - FOR ADC VALUE - Rising Edge
 	EICRA |= _BV(ISC21);				//EX - STEPPER WAITER - FALLING EDGE
 	EICRA |= _BV(ISC31);				//HE - RESESTS THE STEPPER COUNT - FALLING EDGE
 	EIMSK |= 0x0F;						//needs to changed
 }//IN - FOR METAL DETECTION
 
-/*Interrupt 0: OI sensor on PD0*/
-ISR(INT0_vect){											//OI
-	/*Initialize new list element when the first optical sensor is triggered.*/
+/*Interrupt 0: EX sensor on PD0*/
+ISR(INT0_vect){		
+										//OI
+	
+
 }//ISR
 
 /*Interrupt 1: OR on PD1*/
 ISR(INT1_vect){
 	/*ADC VALUE*/
+	OCR0A = 65;
 	lowVal2=0x03FF;							//intial highest vale to 1023
 	ADCSRA |= (1<<ADSC);					//start conversion, goes to ADC
 	
@@ -248,15 +232,15 @@ ISR(INT1_vect){
 ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
 	//stops the belt if the
-	if(stepper_flag==1) {
-		PORTB=0;
+		if(stepper_flag==1) {
+			PORTB=0;
 		}
-	EX++;
-		
+		posEX=1;
+				
 }
 /*Interrupt 3: Hall Effect on PD3*/
 ISR(INT3_vect){
-	//countStep=0;		//resest the counterstep to home;
+	countStep=0;		//resest the counterstep to home;
 	stepperHome=1;
 	
 }//ISR
@@ -285,7 +269,7 @@ void setupADC(){
 	DIDR0 = (1<<ADC1D);									//Turns off the digital input buffer for ADC1 on PF1
 	}/*setupADC*/
 
-	ISR(ADC_vect){
+ISR(ADC_vect){
 		lowVal1 = ADC;										//puts the full 10 bit value to lowVal1
 		if(lowVal2>lowVal1){								//if lowVal2 is greater than lowVal1
 			lowVal2=lowVal1;								//lowVal2 is equal to lowVal1
@@ -296,6 +280,7 @@ void setupADC(){
 		}
 		
 			else{
+				
 				initLink(&newLink);							//Initialize the newLink
 			
 				/*1-black, 2-steel,3-white,4-alu*/
@@ -315,13 +300,17 @@ void setupADC(){
 								newLink->e.itemCode=3;
 								white++;
 							}//if
-						else PORTC =0xFF;
-// 						PORTC = lowVal2&0xFF;
-// 						PORTD = (lowVal2>>8)<<5;
+						else {
+							newLink->e.itemCode=3;
+							white++;
+						}
+						
+						//PORTC = lowVal2&0xFF;
+						PORTD = (lowVal2>>8)<<5;
 						enqueue(&head,&tail,&newLink);				//enqueues the new cylinder
 						Status_flag++;
 						
-						return;
+						//return;
 		}//else
 	}//ISR
 
