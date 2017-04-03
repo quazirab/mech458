@@ -15,13 +15,13 @@
 #include <avr/io.h>
 #include <util/delay_basic.h>
 #include <avr/interrupt.h>
-#include "LinkedQueue.h" 	/* This is the attached header file, which cleans thi*/
+#include "LinkedQueue.h" 	/* This is the attached header file, which cleans this up*/
 
 const unsigned short Al_max = 350;
 const unsigned short Steel_max = 800;
 const unsigned short Steel_min = 400;
-const unsigned short Black_min = 931;		//Changed to just above the white range. Yet to test.
-const unsigned short white_max =930;
+const unsigned short Black_min = 926;
+const unsigned short white_max =925;
 const unsigned short white_min = 900;
 const uint8_t pwm = 128;
 
@@ -65,7 +65,7 @@ volatile unsigned short lowVal2;							//short is 16 bit(2byte)
 volatile uint8_t countStep=0;									//Global variable to track the location of the stepper
 volatile int8_t coilCount = 0;									//Global variable to track which coil was last used
 volatile uint8_t Status_flag = 0;								//Stepper operation only when not 0;
-volatile uint8_t stepper_flag=1;
+volatile uint8_t stepper_flag=0;
 char step[4] = {0x36,0x2e,0x2d,0x35};						//Drives step 1&2, 2&3,3&4,4&1; dual phase full stepping
 link *newLink;								//cylinder pointer for the new node to be added on each input
 link *tail;										//cylinder pointer for the tail of the queue
@@ -77,12 +77,12 @@ volatile uint8_t num = 0;
 volatile uint8_t stepperPOS = 1;			//value of the stepper position - /*1-black, 2-steel,3-white,4-alu*/
 volatile uint8_t stopper = 0;				//for knowing how many parts have crossed EX
 volatile uint8_t timer2overflow;							//Calculating overflow for displaying
-volatile uint8_t alu;										//number of alu for displaying
-volatile uint8_t steel;										//number of steel for displaying
-volatile uint8_t black;										//number of black for displaying
-volatile uint8_t white;										//number of white for displaying
+volatile uint8_t alu = 0;										//number of alu for displaying
+volatile uint8_t steel = 0;										//number of steel for displaying
+volatile uint8_t black = 0;										//number of black for displaying
+volatile uint8_t white = 0;										//number of white for displaying
 volatile uint8_t displayCounter=1;							//counter for showing dispaying position -  /*1-black, 2-steel,3-white,4-alu*/
-volatile int8_t posEX=1;											//for counting how many have crossed EX
+volatile int8_t ext = 0;											//for counting how many have crossed EX
 						
 
 
@@ -108,21 +108,27 @@ int main(){
 	setup(&head,&tail);
 	
 	while(1){
-		
+		//if(!stepper_flag)PORTB=dcDrive[1];
+		//PORTC = Status_flag;
 		
 			
-		if(Status_flag>0) {
+		if(ext == 1 && head != NULL) {
 					dequeue(&head,&tail,&rtnLink);
 					stepper_flag=1;
 					stepperpos(rtnLink->e.itemCode);
+					//stepperpos(firstValue(&head).itemCode);
+					//PORTC = rtnLink->e.itemCode;
 					stepper_flag=0;
-					PORTB=dcDrive[1];
-					timerCount(200);
-					Status_flag--;
-				}//if
-				PORTC=num;
-				//PORTB= dcDrive[1];
+					PORTB = dcDrive[1];
+					
+					//timerCount(200);
+					//Status_flag--;
+					ext = 0;
+					
+		}//if
+				//PORTC=num;
 				
+				//free(rtnLink);
 	}//while
 	return(0);
 
@@ -158,8 +164,8 @@ void StepperHome(){
 		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(coilCount<=13) delay=-1;
-		if(delay < 13) delay =13;
+// 		if(coilCount<=13) delay -= 1;
+// 		if(delay < 13) delay += 1;
 		//countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 	}
 }
@@ -175,8 +181,8 @@ void clockwise(int pos){
 		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(i <= 12) delay -= 1;
-		if(clCount -i <= 12) delay +=1;
+		if(i <= 13) delay -= 1;
+		if(clCount -i <= 13) delay +=1;
 		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 		if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
@@ -194,8 +200,8 @@ void cclockwise (int pos){
 		if (coilCount<0) coilCount=3;	//if the coil moves a full 4 steps, move it back to the fourth coil in order to continue reversing (anti-clockwise)
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(i <= 12) delay -= 1;
-		if(cclCount -i <= 12) delay +=1;
+		if(i <= 13) delay -= 1;
+		if(cclCount -i <= 13) delay +=1;
 		countStep--;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 		if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
@@ -223,6 +229,8 @@ ISR(INT0_vect){
 /*Interrupt 1: OR on PD1*/
 ISR(INT1_vect){
 	/*ADC VALUE*/
+	initLink(&newLink);
+	enqueue(&head,&tail,&newLink);
 	OCR0A = 65;
 	lowVal2=0x03FF;							//intial highest vale to 1023
 	ADCSRA |= (1<<ADSC);					//start conversion, goes to ADC
@@ -232,10 +240,14 @@ ISR(INT1_vect){
 ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
 	//stops the belt if the
-		if(stepper_flag==1) {
+	
+		if(rtnLink->e.itemCode != stepperPOS){
 			PORTB=0;
-		}
-		posEX=1;
+		}//if
+
+		ext = 1;
+		//free(rtnLink);
+		Status_flag --;
 				
 }
 /*Interrupt 3: Hall Effect on PD3*/
@@ -249,6 +261,12 @@ ISR(INT3_vect){
 
 ISR(BADISR_vect){
 	/*Error handler?*/
+	while(1){
+		PORTC = 0xFF;
+		timerCount(500);
+		PORTC = 0;
+		timerCount(500);
+	}
 }//BADISR
 /**************************************************************************************/
 /************************************PWM***********************************************/
@@ -281,7 +299,7 @@ ISR(ADC_vect){
 		
 			else{
 				
-				initLink(&newLink);							//Initialize the newLink
+											//Initialize the newLink
 			
 				/*1-black, 2-steel,3-white,4-alu*/
 						if (lowVal2<Al_max){							//aluminum
@@ -305,9 +323,9 @@ ISR(ADC_vect){
 							white++;
 						}
 						
-						//PORTC = lowVal2&0xFF;
+						PORTC = lowVal2&0xFF;
 						PORTD = (lowVal2>>8)<<5;
-						enqueue(&head,&tail,&newLink);				//enqueues the new cylinder
+										//enqueues the new cylinder
 						Status_flag++;
 						
 						//return;
@@ -558,4 +576,6 @@ ISR(TIMER2_OVF_vect){
 // 		timer2overflow=0;
 // 	}//if
 }//isr
+
+
 
