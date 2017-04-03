@@ -20,7 +20,7 @@
 const unsigned short Al_max = 350;
 const unsigned short Steel_max = 800;
 const unsigned short Steel_min = 400;
-const unsigned short Black_min = 940;
+const unsigned short Black_min = 931;		//Changed to just above the white range. Yet to test.
 const unsigned short white_max =930;
 const unsigned short white_min = 900;
 const uint8_t pwm = 128;
