@@ -21,9 +21,9 @@ const unsigned short Al_max = 350;
 const unsigned short Steel_max = 800;
 const unsigned short Steel_min = 400;
 const unsigned short Black_min = 926;
-const unsigned short white_max =925;
+const unsigned short white_max =920;
 const unsigned short white_min = 900;
-const uint8_t pwm = 128;
+const uint8_t pwm = 80;
 
 
 void setupADC();
@@ -83,7 +83,7 @@ volatile uint8_t black = 0;										//number of black for displaying
 volatile uint8_t white = 0;										//number of white for displaying
 volatile uint8_t displayCounter=1;							//counter for showing dispaying position -  /*1-black, 2-steel,3-white,4-alu*/
 volatile int8_t ext = 0;											//for counting how many have crossed EX
-						
+volatile int8_t freeVar = 0;						
 
 
 /* main routine */
@@ -108,27 +108,37 @@ int main(){
 	setup(&head,&tail);
 	
 	while(1){
-		//if(!stepper_flag)PORTB=dcDrive[1];
-		//PORTC = Status_flag;
+		
+		//PORTC |= Status_flag;
+		
 		
 			
-		if(ext == 1 && head != NULL) {
+		if(ext == 1 && head != NULL) {/*->e.itemCode*/
 					dequeue(&head,&tail,&rtnLink);
 					stepper_flag=1;
 					stepperpos(rtnLink->e.itemCode);
+					//PORTC = rtnLink->e.itemCode;
 					//stepperpos(firstValue(&head).itemCode);
 					//PORTC = rtnLink->e.itemCode;
 					stepper_flag=0;
-					PORTB = dcDrive[1];
+					//PORTB = dcDrive[1];
 					
 					//timerCount(200);
-					//Status_flag--;
+					Status_flag--;
 					ext = 0;
-					
+					freeVar = 1;
+					//ext--;
+					//if(ext<0)ext = 0;
+					//free(rtnLink);
 		}//if
 				//PORTC=num;
-				
-				//free(rtnLink);
+		/*if(rtnLink != NULL && !ext && rtnLink->e.itemCode == stepperPOS){*/
+		if(freeVar == 1 && rtnLink->e.itemCode == stepperPOS){
+			PORTB=dcDrive[1];		
+			free(rtnLink);
+			PORTC = size(&head,&tail);
+			freeVar = 0;
+		}
 	}//while
 	return(0);
 
@@ -141,8 +151,10 @@ int main(){
 void stepperpos(int pos){
 
 	int movepos = pos - stepperPOS;
+
 	if(movepos == 3) movepos = -1;
 	if(movepos == -3) movepos = 1;
+
 	if(movepos != 0){
 		if(movepos > 0) cclockwise(movepos);
 		if(movepos < 0) clockwise(abs(movepos));
@@ -184,7 +196,7 @@ void clockwise(int pos){
 		if(i <= 13) delay -= 1;
 		if(clCount -i <= 13) delay +=1;
 		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
-		if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
+		//if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
 	
 }
@@ -203,7 +215,7 @@ void cclockwise (int pos){
 		if(i <= 13) delay -= 1;
 		if(cclCount -i <= 13) delay +=1;
 		countStep--;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
-		if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
+		//if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
 	}//for
 }
 
@@ -229,9 +241,9 @@ ISR(INT0_vect){
 /*Interrupt 1: OR on PD1*/
 ISR(INT1_vect){
 	/*ADC VALUE*/
-	initLink(&newLink);
-	enqueue(&head,&tail,&newLink);
-	OCR0A = 65;
+ 	initLink(&newLink);
+ 	enqueue(&head,&tail,&newLink);
+	//OCR0A = 65;
 	lowVal2=0x03FF;							//intial highest vale to 1023
 	ADCSRA |= (1<<ADSC);					//start conversion, goes to ADC
 	
@@ -241,19 +253,22 @@ ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
 	//stops the belt if the
 	
-		if(rtnLink->e.itemCode != stepperPOS){
+		if(head!=NULL && firstValue(&head).itemCode!= stepperPOS){
 			PORTB=0;
+			
 		}//if
-
-		ext = 1;
+		
+		if(head!=NULL)ext = 1;
+		
 		//free(rtnLink);
-		Status_flag --;
+		//Status_flag --;
 				
 }
 /*Interrupt 3: Hall Effect on PD3*/
 ISR(INT3_vect){
 	countStep=0;		//resest the counterstep to home;
 	stepperHome=1;
+	stepperPOS = 1;
 	
 }//ISR
 
@@ -299,10 +314,10 @@ ISR(ADC_vect){
 		
 			else{
 				
-											//Initialize the newLink
+					//initLink(&newLink);						//Initialize the newLink
 			
 				/*1-black, 2-steel,3-white,4-alu*/
-						if (lowVal2<Al_max){							//aluminum
+						if (lowVal2<Steel_min/*Al_max*/){							//aluminum
 								newLink->e.itemCode=4;
 								alu++;
 							}//if
@@ -310,22 +325,28 @@ ISR(ADC_vect){
 							newLink->e.itemCode=2;
 							steel++;
 						}//if
-						else if (lowVal2>Black_min){					//BLACK
+						else if (lowVal2>white_max/*Black_min*/){					//BLACK
 							newLink->e.itemCode=1;
 							black++;
 							}//if
-						else if (lowVal2<white_max && lowVal2>white_min  ){//WHITE
+						else if (lowVal2<white_max && lowVal2>Steel_max/*white_min*/  ){//WHITE
 								newLink->e.itemCode=3;
 								white++;
 							}//if
 						else {
-							newLink->e.itemCode=3;
-							white++;
+// 							newLink->e.itemCode=2;
+// 							white++;
+							while(1){
+								PORTC = 0xFF;
+								timerCount(500);
+								PORTC = 0;
+								timerCount(500);
+							}
 						}
 						
-						PORTC = lowVal2&0xFF;
-						PORTD = (lowVal2>>8)<<5;
-										//enqueues the new cylinder
+// 						PORTC = lowVal2&0xFF;
+// 						PORTD = (lowVal2>>8)<<5;
+						//enqueue(&head,&tail,&newLink);			//enqueues the new cylinder
 						Status_flag++;
 						
 						//return;
@@ -576,6 +597,4 @@ ISR(TIMER2_OVF_vect){
 // 		timer2overflow=0;
 // 	}//if
 }//isr
-
-
 
