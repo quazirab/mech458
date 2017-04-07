@@ -21,7 +21,7 @@ const unsigned short Al_max = 350;
 const unsigned short Steel_max = 800;
 const unsigned short Steel_min = 400;
 const unsigned short Black_min = 926;
-const unsigned short white_max =920;
+const unsigned short white_max =958;
 const unsigned short white_min = 900;
 const uint8_t pwm = 80;
 
@@ -54,10 +54,10 @@ void timer2Setup();
 //PB3 = L2
 //PB4 = L1
 //PB5 = E1
-//PD0 = OI
-//PD1 = IN
-//PD2 = OR
-//PD3 = EX
+//PD0 = --
+//PD1 = OR
+//PD2 = EX
+//PD3 = HE
 
 const char dcDrive[4] = {0x00,0x04,0x08,0x0c};				//Array containing the DC motor driver truth table
 volatile unsigned short lowVal1;
@@ -74,16 +74,18 @@ link *rtnLink;								//cylinder pointer for returning the value of the node tha
 volatile uint8_t BELT_STATUS = 1;							//1-BELT MOVING, 0 FOR BELT STOP
 volatile uint8_t stepperHome = 0;
 volatile uint8_t num = 0;
-volatile uint8_t stepperPOS = 1;			//value of the stepper position - /*1-black, 2-steel,3-white,4-alu*/
+volatile uint8_t stepperPOS;			//value of the stepper position - /*1-black, 2-steel,3-white,4-alu*/
 volatile uint8_t stopper = 0;				//for knowing how many parts have crossed EX
-volatile uint8_t timer2overflow;							//Calculating overflow for displaying
+volatile uint8_t timer2overflow = 0;							//Calculating overflow for displaying
 volatile uint8_t alu = 0;										//number of alu for displaying
 volatile uint8_t steel = 0;										//number of steel for displaying
 volatile uint8_t black = 0;										//number of black for displaying
 volatile uint8_t white = 0;										//number of white for displaying
 volatile uint8_t displayCounter=1;							//counter for showing dispaying position -  /*1-black, 2-steel,3-white,4-alu*/
 volatile int8_t ext = 0;											//for counting how many have crossed EX
-volatile int8_t freeVar = 0;						
+volatile int8_t freeVar = 0;
+volatile uint8_t pause = 0;					//pause flag, if 1 go into pause loop
+volatile uint8_t rampdown = 0;
 
 
 /* main routine */
@@ -100,7 +102,7 @@ int main(){
 	setupADC();			//Run the ADC Setup Function below
 	
 	setupInterrupt();	//Sets up all the interrupts
-	timer2Setup();		//Sets up timer 2 for EX and beltstop calibration
+	//timer2Setup();		//Sets up timer 2 for EX and beltstop calibration
 	sei();				//Enable global interrupts
 	StepperHome();		//brings the stepper to position
 	PORTB = dcDrive[1];
@@ -108,40 +110,76 @@ int main(){
 	setup(&head,&tail);
 	
 	while(1){
+		if(rampdown) break;
+		/*if((PIND & 0x01) == 0){
+			while((PIND & 0x01) == 0);
+			timerCount(20);
+		}*/
 		
-		//PORTC |= Status_flag;
-		
-		
-			
-		if(ext == 1 && head != NULL) {/*->e.itemCode*/
+		while(pause){
+			PORTC = black && (0x01<<4);
+			timerCount(1000);
+			PORTC = steel && (0x01<<5);
+			timerCount(1000);
+			PORTC = white && (0x01<<6);
+			timerCount(1000);
+			PORTC = alu && (0x01<<7);
+			timerCount(1000);
+			PORTC = size(&head,&tail) && (0x0F<<4);
+			timerCount(1000);
+		}//WHILE - Pause Function
+
+		if(ext == 1 && head != NULL) {
 					dequeue(&head,&tail,&rtnLink);
 					stepper_flag=1;
 					stepperpos(rtnLink->e.itemCode);
-					//PORTC = rtnLink->e.itemCode;
-					//stepperpos(firstValue(&head).itemCode);
-					//PORTC = rtnLink->e.itemCode;
 					stepper_flag=0;
-					//PORTB = dcDrive[1];
-					
-					//timerCount(200);
 					Status_flag--;
 					ext = 0;
 					freeVar = 1;
-					//ext--;
-					//if(ext<0)ext = 0;
-					//free(rtnLink);
-		}//if
-				//PORTC=num;
-		/*if(rtnLink != NULL && !ext && rtnLink->e.itemCode == stepperPOS){*/
+		}//IF - Dequeue parts from the list and move the stepper
+		
 		if(freeVar == 1 && rtnLink->e.itemCode == stepperPOS){
 			PORTB=dcDrive[1];		
 			free(rtnLink);
-			PORTC = size(&head,&tail);
 			freeVar = 0;
-		}
-	}//while
+		}//IF - Free rtnlink and restart the belt
+		
+	}//WHILE - Normal operation loop
+	
+	timer2Setup();
+	while(timer2overflow <= 2 && head!= NULL){
+		if(ext == 1 && head != NULL) {
+			dequeue(&head,&tail,&rtnLink);
+			stepper_flag=1;
+			stepperpos(rtnLink->e.itemCode);
+			stepper_flag=0;
+			Status_flag--;
+			ext = 0;
+			freeVar = 1;
+		}//if
+		
+		if(freeVar == 1 && rtnLink->e.itemCode == stepperPOS){
+			PORTB=dcDrive[1];
+			free(rtnLink);
+			freeVar = 0;
+		}//IF
+	}//WHILE
+	
+	while(1){
+		PORTC = black && (0x01<<4);
+		timerCount(1000);
+		PORTC = steel && (0x01<<5);
+		timerCount(1000);
+		PORTC = white && (0x01<<6);
+		timerCount(1000);
+		PORTC = alu && (0x01<<7);
+		timerCount(1000);
+		PORTC = (black+steel+white+alu) && (0x0F<<4);
+		timerCount(1000);
+	}//WHILE
+	
 	return(0);
-
 }/* main */
 
 /**************************************************************************************/
@@ -231,11 +269,11 @@ void setupInterrupt(){
 	EIMSK |= 0x0F;						//needs to changed
 }//IN - FOR METAL DETECTION
 
-/*Interrupt 0: EX sensor on PD0*/
-ISR(INT0_vect){		
-										//OI
-	
-
+/*Interrupt 0: Button for Pause*/
+ISR(INT0_vect){
+	timerCount(20);
+	if(pause == 0) pause = 1;
+	if(pause == 1) pause = 0;
 }//ISR
 
 /*Interrupt 1: OR on PD1*/
@@ -246,13 +284,13 @@ ISR(INT1_vect){
 	//OCR0A = 65;
 	lowVal2=0x03FF;							//intial highest vale to 1023
 	ADCSRA |= (1<<ADSC);					//start conversion, goes to ADC
-	
+	if(timer2overflow != 0) timer2overflow = 0;
 }//ISR
 /*Interrupt 1: EX on PD2*/
 ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
 	//stops the belt if the
-	
+		
 		if(head!=NULL && firstValue(&head).itemCode!= stepperPOS){
 			PORTB=0;
 			
@@ -268,19 +306,23 @@ ISR (INT2_vect){
 ISR(INT3_vect){
 	countStep=0;		//resest the counterstep to home;
 	stepperHome=1;
-	stepperPOS = 1;
-	
+	stepperPOS = 0;
 }//ISR
 
+/*Interrupt 4: Ramp Down Button on PD4*/
+ISR(INT4_vect){
+	timerCount(20);
+	rampdown = 1;
+}//ISR
 
-
+/*Bad ISR Vector*/
 ISR(BADISR_vect){
-	/*Error handler?*/
+	/*Display flashing lights to indicate something messed up*/
 	while(1){
 		PORTC = 0xFF;
-		timerCount(500);
+		timerCount(250);
 		PORTC = 0;
-		timerCount(500);
+		timerCount(250);
 	}
 }//BADISR
 /**************************************************************************************/
@@ -316,27 +358,28 @@ ISR(ADC_vect){
 				
 					//initLink(&newLink);						//Initialize the newLink
 			
-				/*1-black, 2-steel,3-white,4-alu*/
+				/*0-black, 1-steel,2-white,3-alu*/
 						if (lowVal2<Steel_min/*Al_max*/){							//aluminum
-								newLink->e.itemCode=4;
+								newLink->e.itemCode=3;
 								alu++;
 							}//if
 		 				else if (lowVal2>Steel_min && lowVal2<Steel_max){//STEEL
-							newLink->e.itemCode=2;
+							newLink->e.itemCode=1;
 							steel++;
 						}//if
 						else if (lowVal2>white_max/*Black_min*/){					//BLACK
-							newLink->e.itemCode=1;
+							newLink->e.itemCode=0;
 							black++;
 							}//if
-						else if (lowVal2<white_max && lowVal2>Steel_max/*white_min*/  ){//WHITE
-								newLink->e.itemCode=3;
+						else if (lowVal2<=white_max && lowVal2>Steel_max/*white_min*/  ){//WHITE
+								newLink->e.itemCode=2;
 								white++;
 							}//if
 						else {
 // 							newLink->e.itemCode=2;
 // 							white++;
 							while(1){
+								PORTB = 0;
 								PORTC = 0xFF;
 								timerCount(500);
 								PORTC = 0;
@@ -344,8 +387,8 @@ ISR(ADC_vect){
 							}
 						}
 						
-// 						PORTC = lowVal2&0xFF;
-// 						PORTD = (lowVal2>>8)<<5;
+						PORTC = lowVal2&0xFF;
+						PORTD = (lowVal2>>8)<<5;
 						//enqueue(&head,&tail,&newLink);			//enqueues the new cylinder
 						Status_flag++;
 						
@@ -569,7 +612,7 @@ void timer2Setup(){
 }
 
 ISR(TIMER2_OVF_vect){
-// 	timer2overflow++;		//overflows everytime it TCNT hits 256;
+	timer2overflow++;		//overflows everytime it TCNT hits 256;
 // 	if(timer2overflow >=4){		//every 1 secs
 // 		
 // 		if(displayCounter ==1){	//for black
@@ -597,4 +640,3 @@ ISR(TIMER2_OVF_vect){
 // 		timer2overflow=0;
 // 	}//if
 }//isr
-
