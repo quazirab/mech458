@@ -21,7 +21,7 @@ const unsigned short Al_max = 350;
 const unsigned short Steel_max = 800;
 const unsigned short Steel_min = 400;
 const unsigned short Black_min = 926;
-const unsigned short white_max =958;
+const unsigned short white_max =920;
 const unsigned short white_min = 900;
 const uint8_t pwm = 80;
 
@@ -140,6 +140,7 @@ int main(){
 		}//IF - Dequeue parts from the list and move the stepper
 		
 		if(freeVar == 1 && rtnLink->e.itemCode == stepperPOS){
+			timerCount(50);
 			PORTB=dcDrive[1];		
 			free(rtnLink);
 			freeVar = 0;
@@ -156,7 +157,7 @@ int main(){
 			stepper_flag=0;
 			Status_flag--;
 			ext = 0;
-			freeVar = 1;
+			//freeVar = 1;
 		}//if
 		
 		if(freeVar == 1 && rtnLink->e.itemCode == stepperPOS){
@@ -214,9 +215,9 @@ void StepperHome(){
 		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-// 		if(coilCount<=13) delay -= 1;
+ 		if(countStep<=13) delay -= 1;
 // 		if(delay < 13) delay += 1;
-		//countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
+		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 	}
 }
 
@@ -231,10 +232,15 @@ void clockwise(int pos){
 		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(i <= 13) delay -= 1;
-		if(clCount -i <= 13) delay +=1;
+		if(i <= 3) delay -=2;
+		if(i>3 && i <= 9) delay -=1;
+		if(clCount-i>3 && clCount-i<=9)delay +=1;
+		if(clCount-i<=3)delay +=2;
+// 		if(i <= 13) delay -= 1;
+// 		if(clCount -i <= 13) delay +=1;
 		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 		//if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
+
 	}//for
 	
 }
@@ -250,10 +256,16 @@ void cclockwise (int pos){
 		if (coilCount<0) coilCount=3;	//if the coil moves a full 4 steps, move it back to the fourth coil in order to continue reversing (anti-clockwise)
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(i <= 13) delay -= 1;
-		if(cclCount -i <= 13) delay +=1;
+		if(i <= 3) delay -=2;
+		if(i>3 && i <= 9) delay -=1;
+		if(cclCount-i>3 && cclCount-i<=9)delay +=1;
+		if(cclCount-i<=3)delay +=2;
+		
+// 		if(i <= 13) delay -= 1;
+// 		if(cclCount -i <= 13) delay +=1;
 		countStep--;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
-		//if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
+		//if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value
+
 	}//for
 }
 
@@ -295,6 +307,7 @@ ISR (INT2_vect){
 			PORTB=0;
 			
 		}//if
+		
 		
 		if(head!=NULL)ext = 1;
 		
