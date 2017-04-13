@@ -23,7 +23,7 @@ const unsigned short Steel_min = 400;
 const unsigned short Black_min = 926;
 const unsigned short white_max =920;
 const unsigned short white_min = 900;
-const uint8_t pwm = 80;
+const uint8_t pwm = 100;
 
 
 void setupADC();
@@ -36,6 +36,7 @@ void cclockwise (int cclCount);
 void stepperpos(int pos);
 void StepperHome();
 void timer2Setup();
+void displayPause();
 
 
 
@@ -86,6 +87,7 @@ volatile int8_t ext = 0;											//for counting how many have crossed EX
 volatile int8_t freeVar = 0;
 volatile uint8_t pause = 0;					//pause flag, if 1 go into pause loop
 volatile uint8_t rampdown = 0;
+volatile uint8_t rampdownled = 0;
 
 
 /* main routine */
@@ -102,7 +104,7 @@ int main(){
 	setupADC();			//Run the ADC Setup Function below
 	
 	setupInterrupt();	//Sets up all the interrupts
-	//timer2Setup();		//Sets up timer 2 for EX and beltstop calibration
+	timer2Setup();		//Sets up timer 2 for EX and beltstop calibration
 	sei();				//Enable global interrupts
 	StepperHome();		//brings the stepper to position
 	PORTB = dcDrive[1];
@@ -110,23 +112,12 @@ int main(){
 	setup(&head,&tail);
 	
 	while(1){
+		
 		if(rampdown) break;
-		/*if((PIND & 0x01) == 0){
-			while((PIND & 0x01) == 0);
-			timerCount(20);
-		}*/
+		
 		
 		while(pause){
-			PORTC = black && (0x01<<4);
-			timerCount(1000);
-			PORTC = steel && (0x01<<5);
-			timerCount(1000);
-			PORTC = white && (0x01<<6);
-			timerCount(1000);
-			PORTC = alu && (0x01<<7);
-			timerCount(1000);
-			PORTC = size(&head,&tail) && (0x0F<<4);
-			timerCount(1000);
+
 		}//WHILE - Pause Function
 
 		if(ext == 1 && head != NULL) {
@@ -147,9 +138,13 @@ int main(){
 		}//IF - Free rtnlink and restart the belt
 		
 	}//WHILE - Normal operation loop
+
+
+	TCNT2 = 46;		//start new timer
+	timer2overflow=0;
 	
-	timer2Setup();
-	while(timer2overflow <= 2 && head!= NULL){
+	while(1){
+	if(timer2overflow<100 && head !=NULL){
 		if(ext == 1 && head != NULL) {
 			dequeue(&head,&tail,&rtnLink);
 			stepper_flag=1;
@@ -157,29 +152,28 @@ int main(){
 			stepper_flag=0;
 			Status_flag--;
 			ext = 0;
-			//freeVar = 1;
-		}//if
+			freeVar = 1;
+		}//IF - Dequeue parts from the list and move the stepper
 		
 		if(freeVar == 1 && rtnLink->e.itemCode == stepperPOS){
+			timerCount(50);
 			PORTB=dcDrive[1];
 			free(rtnLink);
 			freeVar = 0;
-		}//IF
-	}//WHILE
+		}//IF - Free rtnlink and restart the belt
+		
+	}
 	
-	while(1){
-		PORTC = black && (0x01<<4);
-		timerCount(1000);
-		PORTC = steel && (0x01<<5);
-		timerCount(1000);
-		PORTC = white && (0x01<<6);
-		timerCount(1000);
-		PORTC = alu && (0x01<<7);
-		timerCount(1000);
-		PORTC = (black+steel+white+alu) && (0x0F<<4);
-		timerCount(1000);
-	}//WHILE
-	
+	if(timer2overflow>=100){
+		PORTB=0;
+		rampdownled=1;
+		EIMSK = 0;
+		TCNT2 = 46;		//start new timer
+		timer2overflow=0;
+	}
+
+	}//while
+
 	return(0);
 }/* main */
 
@@ -270,6 +264,9 @@ void cclockwise (int pos){
 }
 
 
+
+
+
 /**************************************************************************************/
 /************************************Interrupt***********************************************/
 /**************************************************************************************/
@@ -278,14 +275,31 @@ void setupInterrupt(){
 	EICRA |= _BV(ISC10)|_BV(ISC11);		//OR - FOR ADC VALUE - Rising Edge
 	EICRA |= _BV(ISC21);				//EX - STEPPER WAITER - FALLING EDGE
 	EICRA |= _BV(ISC31);				//HE - RESESTS THE STEPPER COUNT - FALLING EDGE
-	EIMSK |= 0x0F;						//needs to changed
+	EICRB |= _BV(ISC41);				//HE - RESESTS THE STEPPER COUNT - FALLING EDGE
+	EIMSK |= 0x1F;						//needs to changed
 }//IN - FOR METAL DETECTION
 
 /*Interrupt 0: Button for Pause*/
 ISR(INT0_vect){
-	timerCount(20);
-	if(pause == 0) pause = 1;
-	if(pause == 1) pause = 0;
+	timerCount(30);
+	while((PIND & 0x01)==0);
+	timerCount(30);
+	
+	if(pause == 0){
+		pause=1;
+		PORTB = 0;
+		TCNT2 = 46;		//start new timer
+		timer2overflow=0;
+		displayCounter = 1;
+		}
+		
+	else if(pause == 1) {
+		PORTB=dcDrive[1];		//start the belt
+		PORTC = 0;
+		pause=0;
+		}
+	
+		
 }//ISR
 
 /*Interrupt 1: OR on PD1*/
@@ -297,6 +311,10 @@ ISR(INT1_vect){
 	lowVal2=0x03FF;							//intial highest vale to 1023
 	ADCSRA |= (1<<ADSC);					//start conversion, goes to ADC
 	if(timer2overflow != 0) timer2overflow = 0;
+	if(rampdown){
+		TCNT2 = 46;		//start new timer
+		timer2overflow=0;
+	}
 }//ISR
 /*Interrupt 1: EX on PD2*/
 ISR (INT2_vect){
@@ -308,11 +326,7 @@ ISR (INT2_vect){
 			
 		}//if
 		
-		
 		if(head!=NULL)ext = 1;
-		
-		//free(rtnLink);
-		//Status_flag --;
 				
 }
 /*Interrupt 3: Hall Effect on PD3*/
@@ -325,7 +339,12 @@ ISR(INT3_vect){
 /*Interrupt 4: Ramp Down Button on PD4*/
 ISR(INT4_vect){
 	timerCount(20);
+	while((PINE & 0x04)==0);
+	timerCount(30);
+	TCNT2 = 46;		//start new timer
+	timer2overflow=0;
 	rampdown = 1;
+	
 }//ISR
 
 /*Bad ISR Vector*/
@@ -400,10 +419,11 @@ ISR(ADC_vect){
 							}
 						}
 						
-						PORTC = lowVal2&0xFF;
-						PORTD = (lowVal2>>8)<<5;
+// 						PORTC = lowVal2&0xFF;
+// 						PORTD = (lowVal2>>8)<<5;
 						//enqueue(&head,&tail,&newLink);			//enqueues the new cylinder
 						Status_flag++;
+						//free(newLink);
 						
 						//return;
 		}//else
@@ -626,30 +646,70 @@ void timer2Setup(){
 
 ISR(TIMER2_OVF_vect){
 	timer2overflow++;		//overflows everytime it TCNT hits 256;
-// 	if(timer2overflow >=4){		//every 1 secs
-// 		
-// 		if(displayCounter ==1){	//for black
-// 			PORTC = black;
-// 			PORTC|=(0b0001<<4);
-// 			displayCounter++;
-// 		}//if
-// 		else if(displayCounter ==2){	//for steel
-// 			PORTC = steel;
-// 			PORTC|=(0b0010<<4);
-// 			displayCounter++;
-// 		}//if
-// 		else if(displayCounter ==3){	//for white
-// 			PORTC = white;
-// 			PORTC|=(0b0100<<4);
-// 			displayCounter++;
-// 		}//if
-// 		else if(displayCounter ==4){	//for alu
-// 			PORTC = alu;
-// 			PORTC|=(0b1000<<4);
-// 			displayCounter=1;
-// 		}//if
-// 		
-// 		TCNT2 = 46;		//start new timer
-// 		timer2overflow=0;
-// 	}//if
+	if(timer2overflow >=25 && pause==1){		//every 1 secs
+		
+		if(displayCounter ==1){	//for black
+			PORTC = black;
+			PORTC|=(0b0001<<4);
+			displayCounter++;
+		}//if
+		else if(displayCounter ==2){	//for steel
+			PORTC = steel;
+			PORTC|=(0b0010<<4);
+			displayCounter++;
+		}//if
+		else if(displayCounter ==3){	//for white
+			PORTC = white;
+			PORTC|=(0b0100<<4);
+			displayCounter++;
+		}//if
+		else if(displayCounter ==4){	//for alu
+			PORTC = alu;
+			PORTC|=(0b1000<<4);
+			displayCounter++;
+		}//if
+		else if(displayCounter ==5){
+			PORTC = size(&head,&tail);
+			PORTC |= (0b1111<<4);
+			displayCounter = 1;
+		}//if
+		
+		TCNT2 = 46;		//start new timer
+		timer2overflow=0; 	
+	}//if
+	
+	else if(timer2overflow >=25 && rampdownled==1){		//every 1 secs
+		
+		if(displayCounter ==1){	//for black
+			PORTC = black;
+			PORTC|=(0b0001<<4);
+			displayCounter++;
+		}//if
+		else if(displayCounter ==2){	//for steel
+			PORTC = steel;
+			PORTC|=(0b0010<<4);
+			displayCounter++;
+		}//if
+		else if(displayCounter ==3){	//for white
+			PORTC = white;
+			PORTC|=(0b0100<<4);
+			displayCounter++;
+		}//if
+		else if(displayCounter ==4){	//for alu
+			PORTC = alu;
+			PORTC|=(0b1000<<4);
+			displayCounter++;
+		}//if
+		else if(displayCounter ==5){
+			PORTC = alu+black+steel+white;
+			PORTC |= (0b1111<<4);
+			displayCounter = 1;
+		}//if
+		TCNT2 = 46;		//start new timer
+		timer2overflow=0;
+		
+	}//else //if
+	
+	
+
 }//isr
