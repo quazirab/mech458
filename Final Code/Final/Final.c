@@ -18,11 +18,11 @@
 #include "LinkedQueue.h" 	/* This is the attached header file, which cleans this up*/
 
 const unsigned short Al_max = 350;
-const unsigned short Steel_max = 800;
-const unsigned short Steel_min = 400;
-const unsigned short Black_min = 926;
-const unsigned short white_max =920;
-const unsigned short white_min = 900;
+const unsigned short Steel_max = 700;
+const unsigned short Steel_min = 475;
+const unsigned short Black_min = 928;
+const unsigned short white_max =915;
+const unsigned short white_min = 850;
 const uint8_t pwm = 80;
 
 
@@ -132,7 +132,11 @@ int main(){
 		
 		if(freeVar == 1 && rtnLink->e.itemCode == stepperPOS){
 			timerCount(50);
-			PORTB=dcDrive[1];		
+			PORTB=dcDrive[1];
+			if(rtnLink->e.itemCode == 3) alu++;
+			else if(rtnLink->e.itemCode == 2) white++;
+			else if(rtnLink->e.itemCode == 1) steel++;
+			else if(rtnLink->e.itemCode == 0) black++;	
 			free(rtnLink);
 			freeVar = 0;
 		}//IF - Free rtnlink and restart the belt
@@ -158,6 +162,10 @@ int main(){
 		if(freeVar == 1 && rtnLink->e.itemCode == stepperPOS){
 			timerCount(50);
 			PORTB=dcDrive[1];
+			if(rtnLink->e.itemCode == 3) alu++;
+			else if(rtnLink->e.itemCode == 2) white++;
+			else if(rtnLink->e.itemCode == 1) steel++;
+			else if(rtnLink->e.itemCode == 0) black++;
 			free(rtnLink);
 			freeVar = 0;
 		}//IF - Free rtnlink and restart the belt
@@ -295,7 +303,7 @@ ISR(INT0_vect){
 		
 	else if(pause == 1) {
 		PORTB=dcDrive[1];		//start the belt
-		PORTC = 0;
+		//PORTC = 0;
 		pause=0;
 		}
 	
@@ -327,6 +335,7 @@ ISR (INT2_vect){
 		}//if
 		
 		if(head!=NULL)ext = 1;
+		
 				
 }
 /*Interrupt 3: Hall Effect on PD3*/
@@ -353,7 +362,7 @@ ISR(BADISR_vect){
 	while(1){
 		PORTC = 0xFF;
 		timerCount(250);
-		PORTC = 0;
+		//PORTC = 0;
 		timerCount(250);
 	}
 }//BADISR
@@ -372,7 +381,7 @@ void setupPWM(){
 /**************************************************************************************/
 void setupADC(){
 	ADMUX = (1<< REFS0)|(1<<MUX0);						// Left adjust, and use VCC as top reference
-	ADCSRA=(1<<ADEN)|(1<<ADIE);							//Set the values of the ADC Enable and ADC Interrupt Enable bits to 1
+	ADCSRA=(1<<ADEN)|(1<<ADIE)|(1<<ADPS1);							//Set the values of the ADC Enable and ADC Interrupt Enable bits to 1
 	DIDR0 = (1<<ADC1D);									//Turns off the digital input buffer for ADC1 on PF1
 	}/*setupADC*/
 
@@ -393,32 +402,32 @@ ISR(ADC_vect){
 				/*0-black, 1-steel,2-white,3-alu*/
 						if (lowVal2<Steel_min/*Al_max*/){							//aluminum
 								newLink->e.itemCode=3;
-								alu++;
+								//alu++;
 							}//if
 		 				else if (lowVal2>Steel_min && lowVal2<Steel_max){//STEEL
 							newLink->e.itemCode=1;
-							steel++;
+							//steel++;
 						}//if
-						else if (lowVal2>white_max/*Black_min*/){					//BLACK
+						else if (lowVal2>white_max /*Black_min*/){					//BLACK
 							newLink->e.itemCode=0;
-							black++;
+							//black++;
 							}//if
-						else if (lowVal2<=white_max && lowVal2>Steel_max/*white_min*/  ){//WHITE
+						else if (lowVal2<=white_max && lowVal2>Steel_max ){//WHITE
 								newLink->e.itemCode=2;
-								white++;
+								//white++;
 							}//if
-						else {
-// 							newLink->e.itemCode=2;
-// 							white++;
-							while(1){
-								PORTB = 0;
-								PORTC = 0xFF;
-								
-								timerCount(500);
-								PORTC = 0;
-								timerCount(500);
-							}
-						}
+// 						else {
+// // 							newLink->e.itemCode=2;
+// // 							white++;
+// 							while(1){
+// 								PORTB = 0;
+// 								PORTC = 0xFF;
+// 								
+// 								timerCount(500);
+// 								PORTC = 0;
+// 								timerCount(500);
+// 							}
+// 						}
 						
 						PORTC = lowVal2&0xFF;
 						PORTD = (lowVal2>>8)<<5;
