@@ -23,7 +23,7 @@ const unsigned short Steel_min = 400;
 const unsigned short Black_min = 926;
 const unsigned short white_max =920;
 const unsigned short white_min = 900;
-const uint8_t pwm = 100;
+const uint8_t pwm = 80;
 
 
 void setupADC();
@@ -413,14 +413,15 @@ ISR(ADC_vect){
 							while(1){
 								PORTB = 0;
 								PORTC = 0xFF;
+								
 								timerCount(500);
 								PORTC = 0;
 								timerCount(500);
 							}
 						}
 						
-// 						PORTC = lowVal2&0xFF;
-// 						PORTD = (lowVal2>>8)<<5;
+						PORTC = lowVal2&0xFF;
+						PORTD = (lowVal2>>8)<<5;
 						//enqueue(&head,&tail,&newLink);			//enqueues the new cylinder
 						Status_flag++;
 						//free(newLink);
