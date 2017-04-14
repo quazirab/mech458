@@ -15,7 +15,7 @@ volatile int8_t coilCount = 0;
 volatile int ocr3value=2500;
 volatile int timer3comcount;
 volatile int8_t stepperworking=0; 
-volatile uint8_t stepperPOS;
+volatile int stepperPOS=0;
 volatile uint8_t stepperdir;			//1- clockwise,2-cclockwise
 volatile uint8_t countStep=0;
 volatile uint8_t posStepCount =0;		//for desired position 
@@ -38,21 +38,17 @@ int main(void)
 	timer3Setup();
 	setupInterrupt();
 	sei();
-		PORTC = 0xFF;
-		StepperHome();
-		PORTC = 0x0F;
-		timerCount(500);
-		if (stepperworking==0)stepperPos(2);
-		//timerCount(500);
-		PORTC = 0b01010101;
+	//int loop = 0;
+	StepperHome();
+	timerCount(500);
+	while(1){
+		if (stepperworking==0){
 
- 		if (stepperworking==0)stepperPos(1);
-// 		while(1){
-// 			PORTC=stepperworking;
-// 		}
-		
-		
-		//TODO:: Please write your application code 
+			stepperPos(3);
+			
+			}
+			
+	}
     
 }
 void setupInterrupt(){
@@ -69,38 +65,41 @@ void StepperHome(){
 		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
 		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
 		timerCount(delay);
-		if(countStep<=12) delay -= 1;
-		// 		if(delay < 13) delay += 1;
+		if(countStep<=10) delay -= 1;
 		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 	}
 }
 
 void stepperPos(int pos){
 	
-	
-	int movepos = pos - stepperPOS;
+	if(pos!=stepperPOS){
+		PORTC=1;
+		int movepos = stepperPOS - pos;
+		stepperPOS = pos;
+		PORTC|=2;
+		stepperdifference = 0;
+		if(movepos == 3) movepos = -1;
+		if(movepos == -3) movepos = 1;
 
-	if(movepos == 3) movepos = -1;
-	if(movepos == -3) movepos = 1;
-
-	if(movepos != 0){
-		if(movepos > 0) {
-			stepperdir=2;//cclockwise
-			posStepCount=50*movepos;
-			stepperdifference=posStepCount;
-		}
+		if(movepos != 0){
+			if(movepos > 0) {
+				stepperdir=1;				//cclockwise
+				posStepCount=50*movepos;
+				stepperdifference=posStepCount;
+			}
 		
-		if(movepos < 0){
-			stepperdir=1;//clockwise
-			posStepCount=50*(abs(movepos));
-			stepperdifference=posStepCount;
+			if(movepos < 0){
+				stepperdir=2;			//clockwise
+				posStepCount=50*(abs(movepos));
+				stepperdifference=posStepCount;
+				PORTC = 0xff;
+			}
+			ocr3value = 2500;
+			OCR3A=ocr3value;//initial speed
+			stepperworking=1;
 		}
-		ocr3value = 2500;
-		OCR3A=ocr3value;//initial speed
-		stepperworking=1;
 	}
-	stepperPOS = pos;
-
+	
 }
 void timer3Setup(){
 	 // set up timer with prescaler = 8 and CTC mode
@@ -119,22 +118,22 @@ void timer3Setup(){
 ISR (TIMER3_COMPA_vect)
 {
 	if (stepperworking){
+		
 		if (stepperdir==1){		//clockwise
 			coilCount++;
 			if (coilCount>3) coilCount=0;
 			PORTA = step[coilCount];
 			countStep++;
-			//posStepCount--;
+		
 			stepAccel = stepperdifference-posStepCount;
 			stepDecel = stepperdifference - stepAccel;
-// 			if(stepAccel<=3) ocr3value-=225;
-// 			if(stepAccel>3 && stepAccel <= 9) ocr3value -=120;
-// 			if(stepDecel>3 && stepDecel<=9)ocr3value +=120;
-// 			if(stepDecel<=3)ocr3value +=225;
-// 			if(stepAccel<=13) ocr3value-=125;
-// 			if(stepDecel<=13)ocr3value +=125;
+			if(stepAccel<=3) ocr3value-=250;
+			if(stepAccel>3 && stepAccel <= 9) ocr3value -=125;
+			if(stepDecel>3 && stepDecel<=9)ocr3value +=125;
+			if(stepDecel<=3)ocr3value +=250;
 			posStepCount--;
-			
+			OCR3A=ocr3value;
+	
 		}//if - stepperdir-clockwise
 		
 		if (stepperdir==2){
@@ -142,20 +141,24 @@ ISR (TIMER3_COMPA_vect)
 			if (coilCount<0) coilCount=3;		
 			PORTA = step[coilCount];
 			countStep--;	
-			//posStepCount--;
+	
 			stepAccel = stepperdifference-posStepCount;
 			stepDecel = stepperdifference - stepAccel;
-// 			if(stepAccel<=3) ocr3value-=225;
-// 			if(stepAccel>3 && stepAccel <= 9) ocr3value -=120;
-// 			if(stepDecel>3 && stepDecel<=9)ocr3value +=120;
-// 			if(stepDecel<=3)ocr3value +=225;
-// 			if(stepAccel<=13) ocr3value-=150;
-// 			if(stepDecel<=13) ocr3value +=150;
+			if(stepAccel<=3) ocr3value-=250;
+			if(stepAccel>3 && stepAccel <= 9) ocr3value -=125;
+			if(stepDecel>3 && stepDecel<=9)ocr3value +=125;
+			if(stepDecel<=3)ocr3value +=250;
 			posStepCount--;
+			OCR3A=ocr3value;
+
 		}//if - stepper-cclockwise
 		
-		if (posStepCount<=0)stepperworking=0;//done working 
-		OCR3A=ocr3value;
+		if (posStepCount<=0){
+			stepperworking=0;//done working
+			timerCount(2000);
+			} 
+			
+		/*OCR3A=ocr3value;*/
 		
 	}//stepperworking
 
@@ -203,7 +206,6 @@ void timerCount(int tim){
 ISR(INT3_vect){
 	countStep=0;		//resest the counterstep to home;
 	stepperHome=1;
-	stepperPOS = 0;
 }//ISR
 
 ISR(BADISR_vect){
