@@ -23,7 +23,7 @@ const unsigned short Steel_min = 400;
 const unsigned short Black_min = 926;
 const unsigned short white_max =920;
 const unsigned short white_min = 900;
-const uint8_t pwm = 100;
+const uint8_t pwm = 50;
 
 
 void setupADC();
@@ -33,10 +33,11 @@ void breakVcc(int tim);
 void setupInterrupt();
 void clockwise(int clCount);
 void cclockwise (int cclCount);
-void stepperpos(int pos);
+void stepperPos(int pos);
 void StepperHome();
 void timer2Setup();
 void displayPause();
+void timer3Setup();
 
 
 
@@ -74,6 +75,12 @@ link *head;										//cylinder pointer for the head of the queue
 link *rtnLink;								//cylinder pointer for returning the value of the node that has been dequeued
 volatile uint8_t BELT_STATUS = 1;							//1-BELT MOVING, 0 FOR BELT STOP
 volatile uint8_t stepperHome = 0;
+volatile uint8_t stepperdir;			//1- clockwise,2-cclockwise
+volatile uint8_t posStepCount =0;		//for desired position
+volatile uint8_t stepperdifference=0;
+volatile uint8_t stepAccel;
+volatile uint8_t stepDecel;
+volatile uint8_t stepperworking = 0;
 volatile uint8_t num = 0;
 volatile uint8_t stepperPOS;			//value of the stepper position - /*1-black, 2-steel,3-white,4-alu*/
 volatile uint8_t stopper = 0;				//for knowing how many parts have crossed EX
@@ -89,6 +96,8 @@ volatile uint8_t pause = 0;					//pause flag, if 1 go into pause loop
 volatile uint8_t rampdown = 0;
 volatile uint8_t rampdownled = 0;
 volatile uint8_t advanceturn=1;
+volatile int ocr3value=2500;
+volatile uint8_t newPos;
 
 
 /* main routine */
@@ -106,6 +115,7 @@ int main(){
 	
 	setupInterrupt();	//Sets up all the interrupts
 	timer2Setup();		//Sets up timer 2 for EX and beltstop calibration
+	timer3Setup();
 	sei();				//Enable global interrupts
 	StepperHome();		//brings the stepper to position
 	PORTB = dcDrive[1];
@@ -121,29 +131,37 @@ int main(){
 		
 		TCNT2 = 0;
 		timer2overflow=0;
-		
-		if (Status_flag == 1 && advanceturn==1){
-			stepperpos(head->e.itemCode);
-			advanceturn=0;
+		PORTC= stepper_flag;
+		PORTC|=(Status_flag<<1);
+		PORTC|=(stepperworking<<2);
+		if (stepper_flag == 0 && stepperworking==0 && head!= NULL){
+			timerCount(100);
+			BELT_STATUS=1;
+			dequeue(&head,&tail,&rtnLink);
+			stepperPos(rtnLink->e.itemCode);
+			stepper_flag = 1;
 			
 		}
-		if(ext == 1 && head != NULL) {
-					dequeue(&head,&tail,&rtnLink);
-					stepper_flag=1;
-					stepperpos(rtnLink->e.itemCode);
-					stepper_flag=0;
-					Status_flag--;
-					ext = 0;
-					freeVar = 1;
-		}//IF - Dequeue parts from the list and move the stepper
-		
+// 		if(ext == 1 && head != NULL && stepperworking ==0) {
+// 					
+// 					dequeue(&head,&tail,&rtnLink);
+// 					stepper_flag=1;
+// 					stepperPos(rtnLink->e.itemCode);
+// 					stepper_flag=0;
+// 					Status_flag--;
+// 					ext = 0;
+// 					freeVar = 1;
+// 		}//IF - Dequeue parts from the list and move the stepper
+// 		
 		if(freeVar == 1 && rtnLink->e.itemCode == stepperPOS){
-			timerCount(50);
-			PORTB=dcDrive[1];		
+			
+			PORTB=dcDrive[1];
+			timerCount(50);		
 			free(rtnLink);
+			Status_flag--;
 			freeVar = 0;
 		}//IF - Free rtnlink and restart the belt
-		
+// 		
 	}//WHILE - Normal operation loop
 
 
@@ -152,10 +170,10 @@ int main(){
 	
 	while(1){
 	if(timer2overflow<100 && head !=NULL){
-		if(ext == 1 && head != NULL) {
+		if(ext == 1 && head != NULL && stepperworking ==0) {
 			dequeue(&head,&tail,&rtnLink);
 			stepper_flag=1;
-			stepperpos(rtnLink->e.itemCode);
+			stepperPos(rtnLink->e.itemCode);
 			stepper_flag=0;
 			Status_flag--;
 			ext = 0;
@@ -166,6 +184,7 @@ int main(){
 			timerCount(50);
 			PORTB=dcDrive[1];
 			free(rtnLink);
+			stepper_flag = 0;
 			freeVar = 0;
 		}//IF - Free rtnlink and restart the belt
 		
@@ -188,18 +207,37 @@ int main(){
 /*****************************Stepper Motor Home**********************************/
 /**************************************************************************************/
 
-void stepperpos(int pos){
+void stepperPos(int pos){
+	
+	if(pos!=stepperPOS){
+		
+		int movepos = stepperPOS - pos;
+		newPos = pos;
+		//stepperPOS = pos;
+		;
+		stepperdifference = 0;
+		if(movepos == 3) movepos = -1;
+		if(movepos == -3) movepos = 1;
 
-	int movepos = pos - stepperPOS;
-
-	if(movepos == 3) movepos = -1;
-	if(movepos == -3) movepos = 1;
-
-	if(movepos != 0){
-		if(movepos > 0) cclockwise(movepos);
-		if(movepos < 0) clockwise(abs(movepos));
+		if(movepos != 0){
+			if(movepos > 0) {
+				stepperdir=1;				//cclockwise
+				posStepCount=50*movepos;
+				stepperdifference=posStepCount;
+			}
+			
+			if(movepos < 0){
+				stepperdir=2;			//clockwise
+				posStepCount=50*(abs(movepos));
+				stepperdifference=posStepCount;
+				
+			}
+			ocr3value = 2500;
+			OCR1A=ocr3value;//initial speed
+			stepperworking=1;
+		}
 	}
-	stepperPOS = pos;
+	
 }
 
 
@@ -221,57 +259,6 @@ void StepperHome(){
 		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
 	}
 }
-
-/**************************************************************************************/
-/*****************************Stepper Motor Clockwise**********************************/
-/**************************************************************************************/
-void clockwise(int pos){
-	int delay = 20;
-	int clCount = pos*50;
-	for(int i=0;i<clCount;i++){
-		coilCount++;					//powers the next coil (clockwise) from the last one that fired
-		if (coilCount>3) coilCount=0;	//if the coil moves a full 4 steps, move it back to the first coil
-		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
-		timerCount(delay);
-		if(i <= 3) delay -=2;
-		if(i>3 && i <= 9) delay -=1;
-		if(clCount-i>3 && clCount-i<=9)delay +=1;
-		if(clCount-i<=3)delay +=2;
-// 		if(i <= 13) delay -= 1;
-// 		if(clCount -i <= 13) delay +=1;
-		countStep++;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
-		//if(countStep>200)countStep=0;	//if the stepper rotates a full 360 degrees, reset to the initial value and start again
-
-	}//for
-	
-}
-
-/**************************************************************************************/
-/*****************************Stepper Motor Counter Clockwise**************************/
-/**************************************************************************************/
-void cclockwise (int pos){
-	int delay = 20;
-	int cclCount = pos*50;
-	for(int i=0;i<cclCount;i++){
-		coilCount--;					//powers the previous coil (anti-clockwise) from the last one that fired
-		if (coilCount<0) coilCount=3;	//if the coil moves a full 4 steps, move it back to the fourth coil in order to continue reversing (anti-clockwise)
-		PORTA = step[coilCount];		//Send the signal to the motor driver on PORTA for each individual step
-		timerCount(delay);
-		if(i <= 3) delay -=2;
-		if(i>3 && i <= 9) delay -=1;
-		if(cclCount-i>3 && cclCount-i<=9)delay +=1;
-		if(cclCount-i<=3)delay +=2;
-		
-// 		if(i <= 13) delay -= 1;
-// 		if(cclCount -i <= 13) delay +=1;
-		countStep--;					//track where in the rotation the stepper is, referenced to when it was turned on (future will be reference to the hall sensor)
-		//if(countStep<0)countStep=200;	//if the stepper rotates a full 360 degrees, reset to the initial value
-
-	}//for
-}
-
-
-
 
 
 /**************************************************************************************/
@@ -302,7 +289,7 @@ ISR(INT0_vect){
 		
 	else if(pause == 1) {
 		PORTB=dcDrive[1];		//start the belt
-		PORTC = 0;
+	
 		pause=0;
 		}
 	
@@ -312,9 +299,9 @@ ISR(INT0_vect){
 /*Interrupt 1: OR on PD1*/
 ISR(INT1_vect){
 	/*ADC VALUE*/
- 	initLink(&newLink);
- 	enqueue(&head,&tail,&newLink);
-	//OCR0A = 65;
+//  	initLink(&newLink);
+//  	enqueue(&head,&tail,&newLink);
+	
 	lowVal2=0x03FF;							//intial highest vale to 1023
 	ADCSRA |= (1<<ADSC);					//start conversion, goes to ADC
 	if(timer2overflow != 0) timer2overflow = 0;
@@ -328,19 +315,21 @@ ISR (INT2_vect){
 	/*WAIT AT THE END OF THE BELT*/
 	//stops the belt if the
 		
-		if(head!=NULL && firstValue(&head).itemCode!= stepperPOS){
+		if(Status_flag >=1 && (stepperworking || rtnLink->e.itemCode!= stepperPOS)/*head!=NULL && rtnLink->e.itemCode!= stepperPOS*/){
 			PORTB=0;
-			
+			freeVar = 1;
 		}//if
 		
 		if(head!=NULL)ext = 1;
-				
+		stepper_flag = 0;
+		if(rtnLink->e.itemCode == stepperPOS){
+			
+		}
 }
 /*Interrupt 3: Hall Effect on PD3*/
 ISR(INT3_vect){
 	countStep=0;		//resest the counterstep to home;
 	stepperHome=1;
-	stepperPOS = 0;
 }//ISR
 
 /*Interrupt 4: Ramp Down Button on PD4*/
@@ -395,7 +384,7 @@ ISR(ADC_vect){
 		
 			else{
 				
-					//initLink(&newLink);						//Initialize the newLink
+					initLink(&newLink);						//Initialize the newLink
 			
 				/*0-black, 1-steel,2-white,3-alu*/
 						if (lowVal2<Steel_min/*Al_max*/){							//aluminum
@@ -428,7 +417,7 @@ ISR(ADC_vect){
 						
 // 						PORTC = lowVal2&0xFF;
 // 						PORTD = (lowVal2>>8)<<5;
-						//enqueue(&head,&tail,&newLink);			//enqueues the new cylinder
+						enqueue(&head,&tail,&newLink);			//enqueues the new cylinder
 						Status_flag++;
 						//free(newLink);
 						
@@ -609,29 +598,29 @@ void timerCount(int tim){
 	int i = 0;
 	
 	//Set Presaler TO 1
-	TCCR1B = (1<<CS10);
+	TCCR3B = (1<<CS30);
 	
 	//Set timer clear on Comparision CTC
-	TCCR1B |= (1<<WGM12);
+	TCCR3B |= (1<<WGM32);
 	
 	//Comparison Register to 1000 cycles for 1 ms
-	OCR1A = 0x03e8;
+	OCR3A = 0x03e8;
 	
 	//Set inital Value of the timer Counter to 0x0000
-	TCNT1 = 0x0000;
+	TCNT3 = 0x0000;
 	
 	//Enable the output compare interrupt enable
 	//TIMSK1 = TIMSK1|0x02;						//Timer mask is disabled in order to not need an ISR routine for it.
 	
 	//Clear the timer interrupt flag and begin timer
-	TIFR1 = (1<<OCF1A);
+	TIFR3 = (1<<OCF3A);
 	
 	//Poll the timer to determine when the timer has reached 1ms
 	//Timer is set for 1 ms, so it will be in while for tim X 1ms.
 	while(i<tim){
-		if((TIFR1 & 0x02)==0x02){  // sees if the 0CF1A flag is up
+		if((TIFR3 & 0x02)==0x02){  // sees if the 0CF1A flag is up
 			
-			TIFR1 =(1<<OCF1A);
+			TIFR3 =(1<<OCF3A);
 			i++;
 		}//if
 	}//while
@@ -723,3 +712,66 @@ ISR(TIMER2_OVF_vect){
 		else PORTC=255;}
 
 }//isr
+
+void timer3Setup(){
+	// set up timer with prescaler = 8 and CTC mode
+	TCCR1B |= (1 << WGM12)|(1 << CS11);
+	
+	// initialize counter
+	TCNT1 = 0;
+	
+	// initialize compare value
+	OCR1A = ocr3value;
+	
+	// enable compare interrupt
+	TIMSK1 |= (1 << OCIE1A);
+}
+
+ISR (TIMER1_COMPA_vect)
+{
+	if (stepperworking){
+		
+		if (stepperdir==1){		//clockwise
+			coilCount++;
+			if (coilCount>3) coilCount=0;
+			PORTA = step[coilCount];
+			countStep++;
+			
+			stepAccel = stepperdifference-posStepCount;
+			stepDecel = stepperdifference - stepAccel;
+			if(stepAccel<=3) ocr3value-=250;
+			if(stepAccel>3 && stepAccel <= 9) ocr3value -=125;
+			if(stepDecel>3 && stepDecel<=9)ocr3value +=125;
+			if(stepDecel<=3)ocr3value +=250;
+			posStepCount--;
+			OCR1A=ocr3value;
+			
+		}//if - stepperdir-clockwise
+		
+		if (stepperdir==2){
+			coilCount--;
+			if (coilCount<0) coilCount=3;
+			PORTA = step[coilCount];
+			countStep--;
+			
+			stepAccel = stepperdifference-posStepCount;
+			stepDecel = stepperdifference - stepAccel;
+			if(stepAccel<=3) ocr3value-=250;
+			if(stepAccel>3 && stepAccel <= 9) ocr3value -=125;
+			if(stepDecel>3 && stepDecel<=9)ocr3value +=125;
+			if(stepDecel<=3)ocr3value +=250;
+			posStepCount--;
+			OCR1A=ocr3value;
+
+		}//if - stepper-cclockwise
+		
+		if (posStepCount<=0){
+			stepperworking=0;//done working
+			stepperPOS = newPos;
+		}
+		
+		/*OCR3A=ocr3value;*/
+		
+	}//stepperworking
+
+}
